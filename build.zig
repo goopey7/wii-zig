@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const host = builtin.target;
 
+const APPLICATION_NAME = "wii-zig";
 const WII_DEV_PREFIX = "wii_dev_";
 
 pub fn build(b: *std.Build) !void {
@@ -39,7 +40,7 @@ pub fn build(b: *std.Build) !void {
         , .{ clib_include_path, clib_include_path, crt_path });
         const libc_txt = libc_file.add("libc.txt", libc_contents);
 
-        const obj = b.addObject(.{ .name = "wii-zig", .root_module = module });
+        const obj = b.addObject(.{ .name = APPLICATION_NAME, .root_module = module });
         obj.root_module.stack_check = false;
         obj.root_module.stack_protector = false;
         obj.root_module.sanitize_thread = false;
@@ -55,7 +56,7 @@ pub fn build(b: *std.Build) !void {
 
         const ext = if (host.os.tag == .windows) ".exe" else "";
         const gcc_path = wii.path(b.fmt("devkitPPC/bin/powerpc-eabi-gcc{s}", .{ext})).getPath(b);
-        //const elf2dol_path = wii.path(b.fmt("tools/bin/elf2dol{s}", .{ext})).getPath(b);
+        const elf2dol_path = wii.path(b.fmt("tools/bin/elf2dol{s}", .{ext})).getPath(b);
         const libogc_lib = b.fmt("-L{s}", .{wii.path("libogc/lib/wii").getPath(b)});
 
         const elf_cmd = b.addSystemCommand(&.{gcc_path});
@@ -74,8 +75,15 @@ pub fn build(b: *std.Build) !void {
             "-lm",
             "-o",
         });
-        const elf_output = elf_cmd.addOutputFileArg("wii-zig.elf");
-        const install_elf = b.addInstallFile(elf_output, "wii-zig.elf");
+        const elf_output = elf_cmd.addOutputFileArg(APPLICATION_NAME ++ ".elf");
+
+        const dol_cmd = b.addSystemCommand(&.{elf2dol_path});
+        dol_cmd.addFileArg(elf_output);
+        const dol_output = dol_cmd.addOutputFileArg(APPLICATION_NAME ++ ".dol");
+
+        const install_elf = b.addInstallFile(elf_output, APPLICATION_NAME ++ ".elf");
+        const install_dol = b.addInstallFile(dol_output, APPLICATION_NAME ++ ".dol");
         b.getInstallStep().dependOn(&install_elf.step);
+        b.getInstallStep().dependOn(&install_dol.step);
     }
 }
