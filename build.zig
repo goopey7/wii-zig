@@ -3,12 +3,9 @@ const builtin = @import("builtin");
 const host = builtin.target;
 
 const APPLICATION_NAME = "wii-zig";
-const WII_DEV_PREFIX = "wii_dev_";
+const WII_DEV = "wii_dev_" ++ @tagName(host.os.tag) ++ "_" ++ @tagName(host.cpu.arch);
 
 pub fn build(b: *std.Build) !void {
-    const WII_DEV = WII_DEV_PREFIX ++ @tagName(host.os.tag) ++ "_" ++ @tagName(host.cpu.arch);
-    std.debug.print("{s}\n", .{WII_DEV});
-
     const wii_target = b.resolveTargetQuery(.{
         .ofmt = .elf,
         .os_tag = .freestanding,
@@ -28,7 +25,7 @@ pub fn build(b: *std.Build) !void {
 
     if (b.lazyDependency(WII_DEV, .{})) |wii| {
         const libc_file = b.addWriteFiles();
-        const clib_include_path = wii.path("devkitPPC/powerpc-eabi/include").getPath(b);
+        const libc_include_path = wii.path("devkitPPC/powerpc-eabi/include").getPath(b);
         const crt_path = wii.path("devkitPPC/powerpc-eabi/lib").getPath(b);
         const libc_contents = b.fmt(
             \\include_dir={s}
@@ -37,7 +34,7 @@ pub fn build(b: *std.Build) !void {
             \\msvc_lib_dir=
             \\kernel32_lib_dir=
             \\gcc_dir=
-        , .{ clib_include_path, clib_include_path, crt_path });
+        , .{ libc_include_path, libc_include_path, crt_path });
         const libc_txt = libc_file.add("libc.txt", libc_contents);
 
         const obj = b.addObject(.{ .name = APPLICATION_NAME, .root_module = module });
@@ -53,6 +50,9 @@ pub fn build(b: *std.Build) !void {
 
         module.addSystemIncludePath(wii.path("devkitPPC/powerpc-eabi/include"));
         module.addSystemIncludePath(wii.path("libogc/include"));
+
+        module.addCMacro("__wii__", "1");
+        module.addCMacro("HW_RVL", "1");
 
         const ext = if (host.os.tag == .windows) ".exe" else "";
         const gcc_path = wii.path(b.fmt("devkitPPC/bin/powerpc-eabi-gcc{s}", .{ext})).getPath(b);
