@@ -1,0 +1,17 @@
+.{
+    .name = .wii_zig,
+    .version = "0.1.0",
+    .fingerprint = 0xa29bac12274b0033,
+    .dependencies = .{
+        .wii_dev_linux_x86_64 = .{
+            .url = "http://localhost:8080/wii-dev-linux-x86_64.zip",
+            .hash = "N-V-__8AAJranhmpN2m2V9Ic0ll-sauiGC03tOJ8B_-4GwRL",
+            .lazy = true,
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
