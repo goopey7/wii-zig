@@ -71,6 +71,8 @@ pub fn build(b: *std.Build) !void {
             "-Wl,-Map,zig-out/.map",
             "-Wl,-z,noexecstack",
             libogc_lib,
+            "-lwiiuse",
+            "-lbte",
             "-logc",
             "-lm",
             "-o",
