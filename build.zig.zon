@@ -8,6 +8,11 @@
             .hash = "N-V-__8AAJranhmpN2m2V9Ic0ll-sauiGC03tOJ8B_-4GwRL",
             .lazy = true,
         },
+        .wii_dev_windows_x86_64 = .{
+            .url = "http://localhost:8080/wii-dev-windows-x86_64.zip",
+            .hash = "N-V-__8AAPkk_RZp8Fz9f54B1vlp2t6LFfGyT6tlNkIJH3PQ",
+            .lazy = true,
+        }
     },
     .paths = .{
         "build.zig",
