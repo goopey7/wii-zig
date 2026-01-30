@@ -1,10 +1,8 @@
 const std = @import("std");
-const c = @cImport({
+pub const c = @cImport({
     @cInclude("gccore.h");
-    @cInclude("stdio.h");
-    @cInclude("stdlib.h");
-    @cInclude("unistd.h");
     @cInclude("ogc/system.h");
+    @cInclude("stdio.h");
 });
 
 pub const std_options = std.Options{
@@ -18,9 +16,55 @@ pub fn log(
     args: anytype,
 ) void {
     if (scope == std.log.default_log_scope) {
-        _ = c.printf("%s: " ++ format ++ "\n", @tagName(level), args);
+        _ = std.c.printf("%s: ", @tagName(level).ptr);
     } else {
-        _ = c.printf("%s(%s): " ++ format ++ "\n", @tagName(level), @tagName(scope), args);
+        _ = std.c.printf("%s(%s): ", @tagName(level).ptr, @tagName(scope).ptr);
+    }
+
+    const ArgsType = @TypeOf(args);
+    const args_type_info = @typeInfo(ArgsType);
+
+    if (args_type_info != .@"struct") {
+        @compileError("args must be a tuple");
+    }
+
+    comptime var arg_index = 0;
+    comptime var i = 0;
+
+    inline while (i < format.len) : (i += 1) {
+        if (format[i] == '{' and i + 1 < format.len and format[i + 1] == '}') {
+            const fields = args_type_info.@"struct".fields;
+            if (arg_index < fields.len) {
+                const value = @field(args, fields[arg_index].name);
+                printValue(value);
+                arg_index += 1;
+            }
+            i += 1;
+        } else {
+            _ = c.putchar(format[i]);
+        }
+    }
+
+    _ = c.putchar('\n');
+}
+
+fn printValue(value: anytype) void {
+    const T = @TypeOf(value);
+
+    switch (@typeInfo(T)) {
+        .int => {
+            if (@typeInfo(T).int.signedness == .signed) {
+                _ = std.c.printf("%lld", @as(c_longlong, value));
+            } else {
+                _ = std.c.printf("%llu", @as(c_ulonglong, value));
+            }
+        },
+        .float => _ = std.c.printf("%f", @as(f64, value)),
+        .bool => _ = std.c.printf("%s", if (value) "true".ptr else "false".ptr),
+        .error_set => {
+            _ = std.c.printf("%s", @errorName(value).ptr);
+        },
+        else => @compileError("Unable to print value"),
     }
 }
 
