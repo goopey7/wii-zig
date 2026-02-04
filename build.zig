@@ -10,9 +10,9 @@ pub fn build(b: *std.Build) !void {
         .ofmt = .elf,
         .os_tag = .freestanding,
         .cpu_arch = .powerpc,
-        //.cpu_model = std.Target.powerpc.cpu.@"750",
+        .cpu_model = .{ .explicit = &std.Target.powerpc.cpu.@"750" },
         .cpu_features_add = std.Target.powerpc.featureSet(&.{.hard_float}),
-        .abi = .eabi,
+        .abi = .eabihf,
     });
 
     const module = b.createModule(.{

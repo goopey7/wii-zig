@@ -5,7 +5,7 @@
     .dependencies = .{
         .wii_dev_linux_x86_64 = .{
             .url = "https://wii-dev.samcollier.dev/wii-dev-linux-x86_64.zip",
-            .hash = "N-V-__8AAO6gzBl-xGnvDPke8FCPromP56PZzb7idCPobKUf",
+            .hash = "N-V-__8AANflfhYAav9z4GwY349hgnf_gJ35dLQOCRH1nKhR",
             .lazy = true,
         },
         .wii_dev_windows_x86_64 = .{
