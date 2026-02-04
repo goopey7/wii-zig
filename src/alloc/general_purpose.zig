@@ -58,6 +58,13 @@ pub const GeneralPurposeAllocator = struct {
         };
     }
 
+    pub fn deinit(self: *GeneralPurposeAllocator) void {
+        switch (self.arena) {
+            .MEM_1 => c.SYS_SetArena1Lo(self.start),
+            .MEM_2 => c.SYS_SetArena2Lo(self.start),
+        }
+    }
+
     pub fn interface(self: *Self) std.mem.Allocator {
         return .{
             .ptr = self,
