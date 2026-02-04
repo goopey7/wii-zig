@@ -1,6 +1,6 @@
 const std = @import("std");
 const app = @import("app.zig");
-const log = @import("log.zig").log;
+pub const log = @import("log.zig").log;
 pub const c = @cImport({
     @cInclude("gccore.h");
     @cInclude("ogc/system.h");
@@ -22,10 +22,6 @@ export fn main() c_int {
     app.entry() catch |err| {
         std.log.err("{}", .{err});
     };
-
-    while (true) {
-        c.VIDEO_WaitVSync();
-    }
 
     return 0;
 }
