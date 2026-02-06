@@ -17,12 +17,37 @@ pub fn build(b: *std.Build) !void {
 
     const optimize = b.standardOptimizeOption(.{});
 
+    const platform_module = b.createModule(.{
+        .root_source_file = b.path("src/platform/root.zig"),
+        .target = wii_target,
+        .optimize = optimize,
+        .link_libc = true,
+        .link_libcpp = false,
+    });
+
     const module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = wii_target,
         .optimize = optimize,
         .link_libc = true,
         .link_libcpp = false,
+    });
+
+    const test_module = b.createModule(.{
+        .root_source_file = b.path("src/common/app.zig"),
+        .target = wii_target,
+        .optimize = optimize,
+        .link_libc = true,
+        .link_libcpp = false,
+    });
+
+    const unit_tests = b.addTest(.{
+        .root_module = test_module,
+        .test_runner = .{
+            .mode = .simple,
+            .path = b.path("src/test_runner.zig"),
+        },
+        .emit_object = true,
     });
 
     if (b.lazyDependency(WII_DEV, .{})) |wii| {
@@ -39,55 +64,94 @@ pub fn build(b: *std.Build) !void {
         , .{ libc_include_path, libc_include_path, crt_path });
         const libc_txt = libc_file.add("libc.txt", libc_contents);
 
-        const exe_obj = b.addObject(.{ .name = APPLICATION_NAME, .root_module = module });
-        exe_obj.root_module.stack_check = false;
-        exe_obj.root_module.stack_protector = false;
-        exe_obj.root_module.sanitize_thread = false;
-        exe_obj.root_module.red_zone = false;
-        exe_obj.root_module.omit_frame_pointer = false;
-        exe_obj.root_module.valgrind = false;
-        exe_obj.root_module.unwind_tables = null;
-        exe_obj.root_module.single_threaded = true;
-        exe_obj.setLibCFile(libc_txt);
+        const objects = .{
+            b.addObject(.{ .name = APPLICATION_NAME, .root_module = module }),
+            unit_tests,
+            b.addObject(.{ .name = "platform", .root_module = platform_module }),
+        };
 
-        module.addSystemIncludePath(wii.path("devkitPPC/powerpc-eabi/include"));
-        module.addSystemIncludePath(wii.path("libogc/include"));
+        inline for (objects, 0..) |obj, idx| {
+            obj.root_module.stack_check = false;
+            obj.root_module.stack_protector = false;
+            obj.root_module.sanitize_thread = false;
+            obj.root_module.red_zone = false;
+            obj.root_module.omit_frame_pointer = false;
+            obj.root_module.valgrind = false;
+            obj.root_module.unwind_tables = null;
+            obj.root_module.single_threaded = true;
+            obj.setLibCFile(libc_txt);
 
-        module.addCMacro("__wii__", "1");
-        module.addCMacro("HW_RVL", "1");
+            obj.root_module.addSystemIncludePath(wii.path("devkitPPC/powerpc-eabi/include"));
+            obj.root_module.addSystemIncludePath(wii.path("libogc/include"));
+
+            obj.root_module.addCMacro("__wii__", "1");
+            obj.root_module.addCMacro("HW_RVL", "1");
+            switch (idx) {
+                0, 1 => obj.root_module.addImport("platform", platform_module),
+                2 => {},
+                else => @compileError("too many objects!"),
+            }
+        }
+
+        unit_tests.addSystemIncludePath(wii.path("devkitPPC/powerpc-eabi/include"));
+        unit_tests.addSystemIncludePath(wii.path("libogc/include"));
 
         const ext = if (host.os.tag == .windows) ".exe" else "";
         const gcc_path = wii.path(b.fmt("devkitPPC/bin/powerpc-eabi-gcc{s}", .{ext})).getPath(b);
         const elf2dol_path = wii.path(b.fmt("tools/bin/elf2dol{s}", .{ext})).getPath(b);
         const libogc_lib = b.fmt("-L{s}", .{wii.path("libogc/lib/wii").getPath(b)});
 
-        const elf_cmd = b.addSystemCommand(&.{gcc_path});
-        elf_cmd.addFileArg(exe_obj.getEmittedBin());
-        elf_cmd.addArgs(&.{
-            "-g",
-            "-DGEKKO",
-            "-mrvl",
-            "-mcpu=750",
-            "-meabi",
-            "-mhard-float",
-            "-Wl,-Map,zig-out/.map",
-            "-Wl,-z,noexecstack",
-            libogc_lib,
-            "-lwiiuse",
-            "-lbte",
-            "-logc",
-            "-lm",
-            "-o",
-        });
-        const elf_output = elf_cmd.addOutputFileArg(APPLICATION_NAME ++ ".elf");
+        inline for (objects, 0..) |obj, idx| {
+            switch (idx) {
+                0, 1 => {
+                    const elf_cmd = b.addSystemCommand(&.{gcc_path});
+                    elf_cmd.addFileArg(obj.getEmittedBin());
+                    elf_cmd.addArgs(&.{
+                        "-g",
+                        "-DGEKKO",
+                        "-mrvl",
+                        "-mcpu=750",
+                        "-meabi",
+                        "-mhard-float",
+                        "-Wl,-Map,zig-out/.map",
+                        "-Wl,-z,noexecstack",
+                        libogc_lib,
+                        "-lwiiuse",
+                        "-lbte",
+                        "-logc",
+                        "-lm",
+                        "-o",
+                    });
+                    const elf_path = try std.fmt.allocPrint(b.allocator, "{s}.elf", .{obj.name});
+                    const dol_path = try std.fmt.allocPrint(b.allocator, "{s}.dol", .{obj.name});
+                    const elf_output = elf_cmd.addOutputFileArg(elf_path);
 
-        const dol_cmd = b.addSystemCommand(&.{elf2dol_path});
-        dol_cmd.addFileArg(elf_output);
-        const dol_output = dol_cmd.addOutputFileArg(APPLICATION_NAME ++ ".dol");
+                    const dol_cmd = b.addSystemCommand(&.{elf2dol_path});
+                    dol_cmd.addFileArg(elf_output);
+                    const dol_output = dol_cmd.addOutputFileArg(dol_path);
+                    const install_elf = b.addInstallFile(elf_output, elf_path);
+                    const install_dol = b.addInstallFile(dol_output, dol_path);
 
-        const install_elf = b.addInstallFile(elf_output, APPLICATION_NAME ++ ".elf");
-        const install_dol = b.addInstallFile(dol_output, APPLICATION_NAME ++ ".dol");
-        b.getInstallStep().dependOn(&install_elf.step);
-        b.getInstallStep().dependOn(&install_dol.step);
+                    switch (idx) {
+                        0 => {
+                            b.getInstallStep().dependOn(&install_elf.step);
+                            b.getInstallStep().dependOn(&install_dol.step);
+                        },
+                        1 => {
+                            const test_step = b.step("test", "Run tests");
+                            const run = b.addSystemCommand(&.{ "dolphin-emu-nogui", "-p", "headless", "zig-out/test.dol" });
+                            test_step.dependOn(&run.step);
+                            run.step.dependOn(&unit_tests.step);
+                            run.step.dependOn(&install_elf.step);
+                            run.step.dependOn(&install_dol.step);
+                        },
+                        else => {
+                            @compileError("too many objects!");
+                        },
+                    }
+                },
+                else => {},
+            }
+        }
     }
 }

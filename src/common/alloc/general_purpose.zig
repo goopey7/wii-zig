@@ -241,3 +241,11 @@ pub const GeneralPurposeAllocator = struct {
         log.info("  Fragmentation:       {}", .{self.fragmentation()});
     }
 };
+
+test "gpa" {
+    std.log.info("GPA!!!", .{});
+}
+
+test "gpa1" {
+    std.log.info("GPA1!!!", .{});
+}

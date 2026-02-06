@@ -1,8 +1,9 @@
 const std = @import("std");
 const app = @import("common/app.zig");
+const log = @import("platform").log;
 
 pub const std_options = std.Options{
-    .logFn = app.log,
+    .logFn = log,
 };
 
 fn init() void {

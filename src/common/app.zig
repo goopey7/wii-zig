@@ -1,7 +1,6 @@
 const std = @import("std");
 const allocator = @import("allocator.zig");
-pub const log = @import("log.zig").log;
-pub const c = @import("platform.zig").c;
+pub const c = @import("platform").c;
 
 pub fn entry() !void {
     {
@@ -37,4 +36,8 @@ pub fn entry() !void {
         }
         alloc.dumpStats();
     }
+}
+
+test {
+    std.testing.refAllDecls(@This());
 }
