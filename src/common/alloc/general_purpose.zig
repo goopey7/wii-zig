@@ -243,9 +243,8 @@ pub const GeneralPurposeAllocator = struct {
 };
 
 test "gpa" {
+    if (1 != 0) {
+        return error.NotEqual;
+    }
     std.log.info("GPA!!!", .{});
-}
-
-test "gpa1" {
-    std.log.info("GPA1!!!", .{});
 }
