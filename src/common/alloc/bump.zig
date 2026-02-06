@@ -1,7 +1,7 @@
 const Arena = @import("common.zig").Arena;
 const Stats = @import("common.zig").Stats;
 const std = @import("std");
-const c = @import("root").c;
+const c = @import("common.zig").c;
 
 pub const BumpAllocator = struct {
     const Self = @This();

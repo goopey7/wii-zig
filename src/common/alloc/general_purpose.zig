@@ -1,6 +1,6 @@
 const std = @import("std");
-const c = @import("root").c;
 const common = @import("common.zig");
+const c = common.c;
 
 const BlockHeader = struct {
     size: usize,

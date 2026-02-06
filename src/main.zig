@@ -1,19 +1,13 @@
 const std = @import("std");
-const app = @import("app.zig");
-pub const log = @import("log.zig").log;
-pub const c = @cImport({
-    @cInclude("gccore.h");
-    @cInclude("ogc/system.h");
-    @cInclude("stdio.h");
-});
+const app = @import("common/app.zig");
 
 pub const std_options = std.Options{
-    .logFn = log,
+    .logFn = app.log,
 };
 
 fn init() void {
-    c.VIDEO_Init();
-    _ = c.consoleInit(null);
+    app.c.VIDEO_Init();
+    _ = app.c.consoleInit(null);
 }
 
 export fn main() c_int {

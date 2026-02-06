@@ -15,10 +15,12 @@ pub fn build(b: *std.Build) !void {
         .abi = .eabihf,
     });
 
+    const optimize = b.standardOptimizeOption(.{});
+
     const module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = wii_target,
-        .optimize = b.standardOptimizeOption(.{}),
+        .optimize = optimize,
         .link_libc = true,
         .link_libcpp = false,
     });
@@ -37,16 +39,16 @@ pub fn build(b: *std.Build) !void {
         , .{ libc_include_path, libc_include_path, crt_path });
         const libc_txt = libc_file.add("libc.txt", libc_contents);
 
-        const obj = b.addObject(.{ .name = APPLICATION_NAME, .root_module = module });
-        obj.root_module.stack_check = false;
-        obj.root_module.stack_protector = false;
-        obj.root_module.sanitize_thread = false;
-        obj.root_module.red_zone = false;
-        obj.root_module.omit_frame_pointer = false;
-        obj.root_module.valgrind = false;
-        obj.root_module.unwind_tables = null;
-        obj.root_module.single_threaded = true;
-        obj.setLibCFile(libc_txt);
+        const exe_obj = b.addObject(.{ .name = APPLICATION_NAME, .root_module = module });
+        exe_obj.root_module.stack_check = false;
+        exe_obj.root_module.stack_protector = false;
+        exe_obj.root_module.sanitize_thread = false;
+        exe_obj.root_module.red_zone = false;
+        exe_obj.root_module.omit_frame_pointer = false;
+        exe_obj.root_module.valgrind = false;
+        exe_obj.root_module.unwind_tables = null;
+        exe_obj.root_module.single_threaded = true;
+        exe_obj.setLibCFile(libc_txt);
 
         module.addSystemIncludePath(wii.path("devkitPPC/powerpc-eabi/include"));
         module.addSystemIncludePath(wii.path("libogc/include"));
@@ -60,7 +62,7 @@ pub fn build(b: *std.Build) !void {
         const libogc_lib = b.fmt("-L{s}", .{wii.path("libogc/lib/wii").getPath(b)});
 
         const elf_cmd = b.addSystemCommand(&.{gcc_path});
-        elf_cmd.addFileArg(obj.getEmittedBin());
+        elf_cmd.addFileArg(exe_obj.getEmittedBin());
         elf_cmd.addArgs(&.{
             "-g",
             "-DGEKKO",

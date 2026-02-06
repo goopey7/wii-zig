@@ -1,7 +1,7 @@
 const std = @import("std");
 const allocator = @import("allocator.zig");
-const c = @import("main.zig").c;
-const log = @import("log.zig");
+pub const log = @import("log.zig").log;
+pub const c = @import("platform.zig").c;
 
 pub fn entry() !void {
     {

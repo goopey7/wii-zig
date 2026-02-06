@@ -1,3 +1,4 @@
+pub const c = @import("../app.zig").c;
 pub const Arena = enum {
     MEM_1,
     MEM_2,

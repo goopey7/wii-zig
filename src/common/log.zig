@@ -1,5 +1,5 @@
 const std = @import("std");
-const c = @import("main.zig").c;
+const c = @import("app.zig").c;
 
 pub fn log(
     comptime level: std.log.Level,
