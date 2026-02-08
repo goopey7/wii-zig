@@ -25,6 +25,22 @@ pub fn build(b: *std.Build) !void {
         .link_libcpp = false,
     });
 
+    const benchmark_module = b.createModule(.{
+        .root_source_file = b.path("src/benchmark/root.zig"),
+        .target = wii_target,
+        .optimize = optimize,
+        .link_libc = true,
+        .link_libcpp = false,
+    });
+
+    const common_module = b.createModule(.{
+        .root_source_file = b.path("src/common/root.zig"),
+        .target = wii_target,
+        .optimize = optimize,
+        .link_libc = true,
+        .link_libcpp = false,
+    });
+
     const module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = wii_target,
@@ -34,7 +50,7 @@ pub fn build(b: *std.Build) !void {
     });
 
     const test_module = b.createModule(.{
-        .root_source_file = b.path("src/common/app.zig"),
+        .root_source_file = b.path("src/common/root.zig"),
         .target = wii_target,
         .optimize = optimize,
         .link_libc = true,
@@ -45,7 +61,7 @@ pub fn build(b: *std.Build) !void {
         .root_module = test_module,
         .test_runner = .{
             .mode = .simple,
-            .path = b.path("src/test_runner.zig"),
+            .path = b.path("src/test/test_runner.zig"),
         },
         .emit_object = true,
     });
@@ -68,6 +84,8 @@ pub fn build(b: *std.Build) !void {
             b.addObject(.{ .name = APPLICATION_NAME, .root_module = module }),
             unit_tests,
             b.addObject(.{ .name = "platform", .root_module = platform_module }),
+            b.addObject(.{ .name = "benchmark", .root_module = benchmark_module }),
+            b.addObject(.{ .name = "common", .root_module = common_module }),
         };
 
         inline for (objects, 0..) |obj, idx| {
@@ -87,8 +105,16 @@ pub fn build(b: *std.Build) !void {
             obj.root_module.addCMacro("__wii__", "1");
             obj.root_module.addCMacro("HW_RVL", "1");
             switch (idx) {
-                0, 1 => obj.root_module.addImport("platform", platform_module),
+                0, 1, 4 => {
+                    obj.root_module.addImport("platform", platform_module);
+                    obj.root_module.addImport("benchmark", benchmark_module);
+                    obj.root_module.addImport("common", common_module);
+                },
                 2 => {},
+                3 => {
+                    obj.root_module.addImport("platform", platform_module);
+                    obj.root_module.addImport("common", common_module);
+                },
                 else => @compileError("too many objects!"),
             }
         }
