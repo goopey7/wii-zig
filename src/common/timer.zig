@@ -26,17 +26,20 @@ pub const Timer = struct {
     pub fn getNanosecondsElapsed(self: *const Timer) !u64 {
         if (self.end_time) |end_time| {
             const nano: u64 = 1000000000;
-            return (end_time - self.start_time) * (nano / @as(u64, c.PPC_TIMER_CLOCK));
+            const clock_freq = @as(u64, c.PPC_TIMER_CLOCK);
+            if (clock_freq == 0) {
+                return error.InvalidClockFrequency;
+            }
+            return (end_time - self.start_time) * (nano / clock_freq);
         } else {
             return error.StillTicking;
         }
     }
 };
 
-test {
+test "getNanosBeforeStop" {
     var timer = Timer.start();
-    _ = timer.getNanosecondsElapsed() catch {
-        return;
-    };
-    return error.TimerErrorFail;
+    if (timer.getNanosecondsElapsed() != error.StillTicking) {
+        return error.TimerErrorFail;
+    }
 }
