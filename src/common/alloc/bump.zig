@@ -1,19 +1,18 @@
-const Arena = @import("common.zig").Arena;
-const Stats = @import("common.zig").Stats;
+const common = @import("common.zig");
 const std = @import("std");
-const c = @import("common.zig").c;
+const c = @import("platform").c;
 
 pub const BumpAllocator = struct {
     const Self = @This();
     const Alignment = std.mem.Alignment;
 
-    arena: Arena,
+    arena: common.Arena,
     ptr: [*]u8,
     start: [*]u8,
     end: [*]u8,
-    stats: Stats,
+    stats: common.Stats,
 
-    pub fn init(arena: Arena) Self {
+    pub fn init(arena: common.Arena) Self {
         const lo = switch (arena) {
             .MEM_1 => c.SYS_GetArena1Lo(),
             .MEM_2 => c.SYS_GetArena2Lo(),
@@ -56,7 +55,8 @@ pub const BumpAllocator = struct {
         }
     }
 
-    pub fn interface(self: *Self) std.mem.Allocator {
+    fn stdInterface(ctx: *anyopaque) std.mem.Allocator {
+        const self: *Self = @ptrCast(@alignCast(ctx));
         return .{
             .ptr = self,
             .vtable = &.{
@@ -64,6 +64,21 @@ pub const BumpAllocator = struct {
                 .resize = resize,
                 .remap = remap,
                 .free = free,
+            },
+        };
+    }
+
+    fn getStats(ctx: *anyopaque) common.Stats {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+        return self.stats;
+    }
+
+    pub fn interface(self: *Self) common.Interface {
+        return .{
+            .ptr = self,
+            .vtable = &.{
+                .stdInterface = stdInterface,
+                .getStats = getStats,
             },
         };
     }

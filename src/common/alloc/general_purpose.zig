@@ -1,6 +1,6 @@
 const std = @import("std");
 const common = @import("common.zig");
-const c = common.c;
+const c = @import("platform").c;
 
 const BlockHeader = struct {
     size: usize,
@@ -65,7 +65,8 @@ pub const GeneralPurposeAllocator = struct {
         }
     }
 
-    pub fn interface(self: *Self) std.mem.Allocator {
+    fn stdInterface(ctx: *anyopaque) std.mem.Allocator {
+        const self: *Self = @ptrCast(@alignCast(ctx));
         return .{
             .ptr = self,
             .vtable = &.{
@@ -73,6 +74,21 @@ pub const GeneralPurposeAllocator = struct {
                 .resize = resize,
                 .remap = remap,
                 .free = free,
+            },
+        };
+    }
+
+    fn getStats(ctx: *anyopaque) common.Stats {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+        return self.stats;
+    }
+
+    pub fn interface(self: *Self) common.Interface {
+        return .{
+            .ptr = self,
+            .vtable = &.{
+                .stdInterface = stdInterface,
+                .getStats = getStats,
             },
         };
     }
@@ -241,10 +257,3 @@ pub const GeneralPurposeAllocator = struct {
         log.info("  Fragmentation:       {}", .{self.fragmentation()});
     }
 };
-
-test "gpa" {
-    if (1 != 0) {
-        return error.NotEqual;
-    }
-    std.log.info("GPA!!!", .{});
-}

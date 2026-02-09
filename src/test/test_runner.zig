@@ -9,9 +9,11 @@ pub const std_options = std.Options{
 
 export fn main() c_int {
     for (builtin.test_functions) |t| {
-        t.func() catch |e| {
-            std.log.err("{} failed with: {}", .{t.name, e});
-        };
+        if (t.func()) {
+            std.log.info("{} succeded", .{t.name});
+        } else |e| {
+            std.log.err("{} failed with: {}", .{ t.name, e });
+        }
     }
     return 0;
 }

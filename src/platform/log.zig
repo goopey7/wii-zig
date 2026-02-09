@@ -84,6 +84,8 @@ fn printValue(value: anytype) void {
             _ = std.c.printf("%s", @errorName(value).ptr);
             c.SYS_Report("%s", @errorName(value).ptr);
         },
-        else => @compileError("Unable to print value"),
+        else => {
+            @compileError("Unable to print value of type " ++ @typeName(T));
+        },
     }
 }
