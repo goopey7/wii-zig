@@ -113,9 +113,11 @@ pub const GeneralPurposeAllocator = struct {
 
                 if (remaining > @sizeOf(BlockHeader)) {
                     const next_header_addr = aligned_payload + len;
-                    const new_block: *BlockHeader = @ptrFromInt(next_header_addr);
+                    const aligned_next_header = std.mem.alignForward(usize, next_header_addr, @alignOf(BlockHeader));
+                    const alignment_padding = aligned_next_header - next_header_addr;
+                    const new_block: *BlockHeader = @ptrFromInt(aligned_next_header);
                     new_block.* = .{
-                        .size = remaining - @sizeOf(BlockHeader),
+                        .size = remaining - @sizeOf(BlockHeader) - alignment_padding,
                         .next = block.next,
                         .free = true,
                     };
