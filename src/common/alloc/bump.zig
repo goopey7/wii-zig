@@ -12,7 +12,8 @@ pub const BumpAllocator = struct {
     end: [*]u8,
     stats: common.Stats,
 
-    pub fn init(arena: common.Arena) Self {
+    /// pass a null size to occupy all remaining memory in the arena
+    pub fn init(arena: common.Arena, size: ?usize) !Self {
         const lo = switch (arena) {
             .MEM_1 => c.SYS_GetArena1Lo(),
             .MEM_2 => c.SYS_GetArena2Lo(),
@@ -22,26 +23,49 @@ pub const BumpAllocator = struct {
             .MEM_2 => c.SYS_GetArena2Hi(),
         };
 
-        switch (arena) {
-            .MEM_1 => c.SYS_SetArena1Lo(hi),
-            .MEM_2 => c.SYS_SetArena2Lo(hi),
+        if (size) |sz| {
+            if (@intFromPtr(hi) - @intFromPtr(lo) < sz)
+                return error.OutOfMemory;
+            const new_lo: *anyopaque = @ptrFromInt(@intFromPtr(lo) + sz);
+            switch (arena) {
+                .MEM_1 => c.SYS_SetArena1Lo(new_lo),
+                .MEM_2 => c.SYS_SetArena2Lo(new_lo),
+            }
+            return .{
+                .arena = arena,
+                .start = @ptrCast(lo),
+                .ptr = @ptrCast(lo),
+                .end = @ptrCast(new_lo),
+                .stats = .{
+                    .total_capacity = sz,
+                    .alloc_count = 0,
+                    .alloc_failures = 0,
+                    .current_usage = 0,
+                    .free_count = 0,
+                    .peak_usage = 0,
+                },
+            };
+        } else {
+            switch (arena) {
+                .MEM_1 => c.SYS_SetArena1Lo(hi),
+                .MEM_2 => c.SYS_SetArena2Lo(hi),
+            }
+            const total_capacity = @intFromPtr(hi) - @intFromPtr(lo);
+            return .{
+                .arena = arena,
+                .start = @ptrCast(lo),
+                .ptr = @ptrCast(lo),
+                .end = @ptrCast(hi),
+                .stats = .{
+                    .total_capacity = total_capacity,
+                    .alloc_count = 0,
+                    .alloc_failures = 0,
+                    .current_usage = 0,
+                    .free_count = 0,
+                    .peak_usage = 0,
+                },
+            };
         }
-
-        const total_capacity = @intFromPtr(hi) - @intFromPtr(lo);
-        return .{
-            .arena = arena,
-            .start = @ptrCast(lo),
-            .ptr = @ptrCast(lo),
-            .end = @ptrCast(hi),
-            .stats = .{
-                .total_capacity = total_capacity,
-                .alloc_count = 0,
-                .alloc_failures = 0,
-                .current_usage = 0,
-                .free_count = 0,
-                .peak_usage = 0,
-            },
-        };
     }
 
     pub fn reset(self: *Self) void {

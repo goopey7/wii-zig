@@ -8,6 +8,8 @@ const BlockHeader = struct {
     free: bool,
 };
 
+const MIN_SPLIT_SIZE = @sizeOf(BlockHeader) + @alignOf(BlockHeader) + 16;
+
 pub const GeneralPurposeAllocator = struct {
     const Self = @This();
     const Alignment = std.mem.Alignment;
@@ -18,7 +20,8 @@ pub const GeneralPurposeAllocator = struct {
     free_list: ?*BlockHeader,
     stats: common.Stats,
 
-    pub fn init(arena: common.Arena) Self {
+    pub fn init(arena: common.Arena, size: ?usize) !Self {
+        _ = size;
         const lo = switch (arena) {
             .MEM_1 => c.SYS_GetArena1Lo(),
             .MEM_2 => c.SYS_GetArena2Lo(),
@@ -33,11 +36,11 @@ pub const GeneralPurposeAllocator = struct {
             .MEM_2 => c.SYS_SetArena2Lo(hi),
         }
 
-        const size = @intFromPtr(hi) - @intFromPtr(lo);
+        const total_capacity = @intFromPtr(hi) - @intFromPtr(lo);
 
         const header: *BlockHeader = @ptrCast(@alignCast(lo));
         header.* = .{
-            .size = size - @sizeOf(BlockHeader),
+            .size = total_capacity - @sizeOf(BlockHeader),
             .next = null,
             .free = true,
         };
@@ -48,7 +51,7 @@ pub const GeneralPurposeAllocator = struct {
             .end = @ptrCast(hi),
             .free_list = header,
             .stats = .{
-                .total_capacity = size,
+                .total_capacity = total_capacity,
                 .current_usage = 0,
                 .peak_usage = 0,
                 .alloc_count = 0,
@@ -102,19 +105,25 @@ pub const GeneralPurposeAllocator = struct {
 
         while (current) |block| {
             const header_addr = @intFromPtr(block);
-            const payload_addr = header_addr + @sizeOf(BlockHeader);
-            const aligned_payload = std.mem.alignForward(usize, payload_addr, alignment.toByteUnits());
 
-            const padding = aligned_payload - payload_addr;
+            const backref_size = @sizeOf(usize);
+            const min_payload_addr = header_addr + @sizeOf(BlockHeader) + backref_size;
+            const actual_payload = std.mem.alignForward(usize, min_payload_addr, alignment.toByteUnits());
+            const padding = actual_payload - header_addr - @sizeOf(BlockHeader);
+
             const total_needed = padding + len;
 
             if (block.size >= total_needed) {
                 const remaining = block.size - total_needed;
 
-                if (remaining > @sizeOf(BlockHeader)) {
-                    const next_header_addr = aligned_payload + len;
+                const backref_ptr: *usize = @ptrFromInt(actual_payload - backref_size);
+                backref_ptr.* = header_addr;
+
+                if (remaining > MIN_SPLIT_SIZE) {
+                    const next_header_addr = actual_payload + len;
                     const aligned_next_header = std.mem.alignForward(usize, next_header_addr, @alignOf(BlockHeader));
                     const alignment_padding = aligned_next_header - next_header_addr;
+
                     const new_block: *BlockHeader = @ptrFromInt(aligned_next_header);
                     new_block.* = .{
                         .size = remaining - @sizeOf(BlockHeader) - alignment_padding,
@@ -135,13 +144,13 @@ pub const GeneralPurposeAllocator = struct {
                     }
                 }
                 block.free = false;
-                block.size = len;
+                block.size = total_needed;
                 self.stats.alloc_count += 1;
-                self.stats.current_usage += len;
+                self.stats.current_usage += block.size;
                 if (self.stats.current_usage > self.stats.peak_usage) {
                     self.stats.peak_usage = self.stats.current_usage;
                 }
-                return @ptrFromInt(aligned_payload);
+                return @ptrFromInt(actual_payload);
             }
 
             prev = block;
@@ -155,9 +164,18 @@ pub const GeneralPurposeAllocator = struct {
         _ = alignment;
         _ = ret_addr;
         const self: *Self = @ptrCast(@alignCast(ctx));
-        const header_addr = @intFromPtr(memory.ptr) - @sizeOf(BlockHeader);
+
+        const mem_addr = @intFromPtr(memory.ptr);
+        const backref_ptr: *const usize = @ptrFromInt(mem_addr - @sizeOf(usize));
+        const header_addr = backref_ptr.*;
+
+        if (header_addr < @intFromPtr(self.start) or header_addr >= @intFromPtr(self.end)) {
+            std.log.err("free: INVALID HEADER ADDR {} (valid: {}-{})", .{ header_addr, @intFromPtr(self.start), @intFromPtr(self.end) });
+            return;
+        }
 
         const block: *BlockHeader = @ptrFromInt(header_addr);
+
         block.free = true;
         self.stats.free_count += 1;
         self.stats.current_usage -= block.size;
@@ -180,6 +198,7 @@ pub const GeneralPurposeAllocator = struct {
             self.free_list = block;
         }
 
+        // Coalesce with next block
         if (block.next) |next| {
             const block_end = header_addr + @sizeOf(BlockHeader) + block.size;
             if (block_end == @intFromPtr(next)) {
@@ -188,6 +207,7 @@ pub const GeneralPurposeAllocator = struct {
             }
         }
 
+        // Coalesce with prev block
         if (prev) |p| {
             const prev_end = @intFromPtr(p) + @sizeOf(BlockHeader) + p.size;
             if (prev_end == header_addr) {
@@ -213,49 +233,5 @@ pub const GeneralPurposeAllocator = struct {
         _ = ret_addr;
         _ = new_len;
         return null;
-    }
-
-    pub fn largestFreeBlock(self: *const GeneralPurposeAllocator) u32 {
-        var max: usize = 0;
-        var current = self.free_list;
-
-        while (current) |block| {
-            if (block.size > max) {
-                max = block.size;
-            }
-            current = block.next;
-        }
-
-        return max;
-    }
-
-    pub fn totalFreeMemory(self: *const GeneralPurposeAllocator) u32 {
-        var total: usize = 0;
-        var current = self.free_list;
-
-        while (current) |block| {
-            total += block.size;
-            current = block.next;
-        }
-
-        return total;
-    }
-
-    pub fn fragmentation(self: *const GeneralPurposeAllocator) f32 {
-        return 1.0 - @as(f32, @floatFromInt(self.largestFreeBlock())) / @as(f32, @floatFromInt(self.totalFreeMemory()));
-    }
-
-    pub fn dumpStats(self: *const GeneralPurposeAllocator) void {
-        const log = std.log.scoped(.GeneralPurposeAllocator);
-        log.info("Allocator stats", .{});
-        log.info("  Capacity:            {} KB", .{self.stats.total_capacity / 1024});
-        log.info("  Used:                {} KB", .{self.stats.current_usage / 1024});
-        log.info("  Peak:                {} KB", .{self.stats.peak_usage / 1024});
-        log.info("  Free:                {} KB", .{self.totalFreeMemory() / 1024});
-        log.info("  Largest Free Block:  {} KB", .{self.largestFreeBlock() / 1024});
-        log.info("  Allocs:              {}", .{self.stats.alloc_count});
-        log.info("  Frees:               {}", .{self.stats.free_count});
-        log.info("  Failures:            {}", .{self.stats.alloc_failures});
-        log.info("  Fragmentation:       {}", .{self.fragmentation()});
     }
 };

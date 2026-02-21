@@ -1,4 +1,9 @@
 const c = @import("platform").c;
+pub const TimeUnit = enum {
+    nanoseconds,
+    microseconds,
+    milliseconds,
+};
 
 pub const Timer = struct {
     start_time: u64,
@@ -23,14 +28,23 @@ pub const Timer = struct {
         self.end_time = null;
     }
 
-    pub fn getNanosecondsElapsed(self: *const Timer) !u64 {
+    pub fn getTimeElapsed(self: *const Timer, unit: TimeUnit) !u64 {
+        const ticks = try getTicksElapsed(self);
+        const clock_freq = @as(u64, c.PPC_TIMER_CLOCK);
+        if (clock_freq == 0) {
+            return error.InvalidClockFrequency;
+        }
+
+        return switch (unit) {
+            .nanoseconds => (ticks * 1_000_000_000) / clock_freq,
+            .microseconds => (ticks * 1_000_000) / clock_freq,
+            .milliseconds => (ticks * 1_000) / clock_freq,
+        };
+    }
+
+    pub fn getTicksElapsed(self: *const Timer) !u64 {
         if (self.end_time) |end_time| {
-            const nano: u64 = 1000000000;
-            const clock_freq = @as(u64, c.PPC_TIMER_CLOCK);
-            if (clock_freq == 0) {
-                return error.InvalidClockFrequency;
-            }
-            return (end_time - self.start_time) * (nano / clock_freq);
+            return (end_time - self.start_time);
         } else {
             return error.StillTicking;
         }
@@ -39,7 +53,7 @@ pub const Timer = struct {
 
 test "getNanosBeforeStop" {
     var timer = Timer.start();
-    if (timer.getNanosecondsElapsed() != error.StillTicking) {
-        return error.TimerErrorFail;
+    if (timer.getTimeElapsed(.nanoseconds) != error.StillTicking) {
+        return error.TimerErrorHandleFail;
     }
 }
