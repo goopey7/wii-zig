@@ -162,6 +162,18 @@ pub fn build(b: *std.Build) !void {
                         0 => {
                             b.getInstallStep().dependOn(&install_elf.step);
                             b.getInstallStep().dependOn(&install_dol.step);
+
+                            const deploy_step = b.step("deploy", "Deploy to wii");
+                            const deploy_cmd = b.addSystemCommand(&.{ "wiiload", "zig-out/wii-zig.dol" });
+                            deploy_step.dependOn(&deploy_cmd.step);
+                            deploy_cmd.step.dependOn(&install_dol.step);
+
+                            const run_step = b.step("run", "Run in dolphin");
+                            const run = b.addSystemCommand(&.{ "dolphin-emu-nogui", "zig-out/wii-zig.dol" });
+                            run_step.dependOn(&run.step);
+                            run.step.dependOn(&install_elf.step);
+                            run.step.dependOn(&install_dol.step);
+
                         },
                         1 => {
                             const test_step = b.step("test", "Run tests");
