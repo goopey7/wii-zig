@@ -3,6 +3,7 @@ const workloads = @import("workloads.zig");
 const BenchmarkConfig = @import("config.zig").BenchmarkConfig;
 const allocator = @import("common").allocator;
 const ResultsReporter = @import("reporter.zig").ResultsReporter;
+const http = @import("platform").http;
 
 pub fn main() !void {
     std.log.info("Benchmark starting", .{});
@@ -20,4 +21,6 @@ pub fn main() !void {
     }
 
     std.log.info("Benchmark complete", .{});
+    const headers: []http.Header = &[_]http.Header {};
+    _ = try http.post("localhost", headers, "{}");
 }
