@@ -21,6 +21,7 @@ pub const Interface = struct {
     pub const VTable = struct {
         stdInterface: *const fn (*anyopaque) std.mem.Allocator,
         getStats: *const fn (*anyopaque) Stats,
+        getArena: *const fn (*anyopaque) Arena,
     };
 
     pub inline fn stdInterface(self: *const Interface) std.mem.Allocator {
@@ -29,5 +30,9 @@ pub const Interface = struct {
 
     pub inline fn getStats(self: *const Interface) Stats {
         return self.vtable.getStats(self.ptr);
+    }
+
+    pub inline fn getArena(self: *const Interface) Arena {
+        return self.vtable.getArena(self.ptr);
     }
 };

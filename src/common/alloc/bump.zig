@@ -97,12 +97,18 @@ pub const BumpAllocator = struct {
         return self.stats;
     }
 
+    fn getArena(ctx: *anyopaque) common.Arena {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+        return self.arena;
+    }
+
     pub fn interface(self: *Self) common.Interface {
         return .{
             .ptr = self,
             .vtable = &.{
                 .stdInterface = stdInterface,
                 .getStats = getStats,
+                .getArena = getArena,
             },
         };
     }

@@ -1,88 +1,70 @@
 const std = @import("std");
 const allocator = @import("common").allocator;
 const BenchmarkConfig = @import("config.zig").BenchmarkConfig;
-const Timer = @import("common").timer.Timer;
+const common = @import("common");
+const Timer = common.timer.Timer;
+const Arena = common.allocator.Arena;
+
+const AllocationRecord = struct {
+    id: usize,
+    ptr: []u8,
+    size: usize,
+    actual_size: usize,
+    alloc_time_us: u64,
+    free_time_us: ?u64,
+    arena: Arena,
+};
 
 pub const WorkloadResult = struct {
-    total_alloc_time_us: u64,
-    total_free_time_us: u64,
-    frame_alloc_times: []u64,
-    frame_free_times: []u64,
-    allocation_count: usize,
-    failure_count: usize,
     final_allocator_stats: allocator.Stats,
+    allocations: std.ArrayList(AllocationRecord),
 };
 
 pub const FrameBasedWorkload = struct {
-    const Allocation = struct {
-        ptr: []u8,
-        size: usize,
-    };
-
     pub fn run(comptime timing_mode: BenchmarkConfig.TimingMode, config: BenchmarkConfig, alloc_interface: allocator.Interface, bench_alloc: std.mem.Allocator) !WorkloadResult {
         var prng = std.Random.DefaultPrng.init(42);
         const rand = prng.random();
 
         var result = WorkloadResult{
-            .total_alloc_time_us = 0,
-            .total_free_time_us = 0,
-            .allocation_count = 0,
-            .failure_count = 0,
             .final_allocator_stats = undefined,
-            .frame_alloc_times = undefined,
-            .frame_free_times = undefined,
+            .allocations = try std.ArrayList(AllocationRecord).initCapacity(bench_alloc, 6000),
         };
 
         var std_alloc = alloc_interface.stdInterface();
-        var allocations = try std.ArrayList(Allocation).initCapacity(bench_alloc, config.small_allocs_per_frame);
-        defer allocations.deinit(bench_alloc);
 
-        for (0..config.frame_count) |_| {
-            allocations.clearRetainingCapacity();
-
+        for (0..config.frame_count) |frame_idx| {
             if (timing_mode == .per_allocation) {
-                for (0..config.small_allocs_per_frame) |_| {
+                for (0..config.small_allocs_per_frame) |idx| {
                     const range = config.small_alloc_size_range;
                     const size = rand.intRangeAtMost(usize, range.min, range.max);
                     var alloc_timer = Timer.start();
                     const alloc_result = std_alloc.alloc(u8, size);
                     alloc_timer.stop();
                     if (alloc_result) |ptr| {
-                        result.total_alloc_time_us += try alloc_timer.getTimeElapsed(.microseconds);
-                        result.allocation_count += 1;
-                        try allocations.append(bench_alloc, .{ .ptr = ptr[0..size], .size = size });
-                    } else |_| {
-                        result.failure_count += 1;
-                    }
+                        const allocation: AllocationRecord = .{
+                            .id = frame_idx * config.small_allocs_per_frame + idx,
+                            .ptr = ptr[0..ptr.len],
+                            .size = size,
+                            .actual_size = ptr.len,
+                            .alloc_time_us = try alloc_timer.getTimeElapsed(.microseconds),
+                            .arena = alloc_interface.getArena(),
+                            .free_time_us = null,
+                        };
+                        try result.allocations.append(bench_alloc, allocation);
+                    } else |_| {}
                 }
 
-                var free_timer = Timer.start();
-                for (allocations.items) |allocation| {
-                    std_alloc.free(allocation.ptr);
+                const frame_start = frame_idx * config.small_allocs_per_frame;
+                const frame_end = frame_start + config.small_allocs_per_frame;
+                for (frame_start..frame_end) |i| {
+                    var free_timer = Timer.start();
+                    std_alloc.free(result.allocations.items[i].ptr);
+                    free_timer.stop();
+                    result.allocations.items[i].free_time_us = try free_timer.getTimeElapsed(.microseconds);
                 }
-                free_timer.stop();
-                result.total_free_time_us += try free_timer.getTimeElapsed(.microseconds);
-                allocations.clearAndFree(bench_alloc);
-                result.final_allocator_stats = alloc_interface.getStats();
-            } else {
-                for (0..config.small_allocs_per_frame) |_| {
-                    const range = config.small_alloc_size_range;
-                    const size = rand.intRangeAtMost(usize, range.min, range.max);
-                    if (std_alloc.alloc(u8, size)) |ptr| {
-                        result.allocation_count += 1;
-                        try allocations.append(bench_alloc, .{ .ptr = ptr[0..size], .size = size });
-                    } else |_| {
-                        result.failure_count += 1;
-                    }
-                }
-
-                for (allocations.items) |allocation| {
-                    std_alloc.free(allocation.ptr);
-                }
-                allocations.clearAndFree(bench_alloc);
-                result.final_allocator_stats = alloc_interface.getStats();
             }
         }
+        result.final_allocator_stats = alloc_interface.getStats();
         return result;
     }
 };

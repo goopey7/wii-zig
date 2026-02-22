@@ -86,12 +86,18 @@ pub const GeneralPurposeAllocator = struct {
         return self.stats;
     }
 
+    fn getArena(ctx: *anyopaque) common.Arena {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+        return self.arena;
+    }
+
     pub fn interface(self: *Self) common.Interface {
         return .{
             .ptr = self,
             .vtable = &.{
                 .stdInterface = stdInterface,
                 .getStats = getStats,
+                .getArena = getArena,
             },
         };
     }
@@ -166,6 +172,7 @@ pub const GeneralPurposeAllocator = struct {
         const self: *Self = @ptrCast(@alignCast(ctx));
 
         const mem_addr = @intFromPtr(memory.ptr);
+
         const backref_ptr: *const usize = @ptrFromInt(mem_addr - @sizeOf(usize));
         const header_addr = backref_ptr.*;
 

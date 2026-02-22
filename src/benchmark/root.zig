@@ -13,12 +13,11 @@ pub fn main() !void {
     defer reporter.deinit();
 
     for (0..config.iterations) |_| {
-        var gpa = try allocator.GeneralPurposeAllocator.init(.MEM_1, null);
+        var gpa = try allocator.BumpAllocator.init(.MEM_1, null);
         defer gpa.deinit();
         const result = try workloads.FrameBasedWorkload.run(.per_allocation, config, gpa.interface(), bench_alloc.interface().stdInterface());
         try reporter.addResult("gpa", result);
     }
 
     std.log.info("Benchmark complete", .{});
-    reporter.printComparison();
 }
