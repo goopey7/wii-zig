@@ -87,34 +87,55 @@ pub fn post(url: []const u8, port: u16, data: []const u8) !Response {
     return response;
 }
 
-const SocketWriter = struct {
+pub const StreamingPost = struct {
     sock: c_int,
+    buffer: [4096]u8 = undefined,
+    buf_pos: usize = 0,
 
-    pub fn writeAll(self: *const SocketWriter, data: []const u8) !void {
-        var sent: usize = 0;
-        while (sent < data.len) {
-            const n = c.send(self.sock, data.ptr + sent, @intCast(data.len - sent), 0);
-            if (n < 0) return error.SendFailed;
-            sent += @intCast(n);
+    pub fn writeAll(self: *StreamingPost, data: []const u8) !void {
+        const remaining = data;
+
+        if (self.buf_pos + remaining.len > self.buffer.len) {
+            try self.flush();
+        }
+
+        if (remaining.len >= self.buffer.len) {
+            var sent: usize = 0;
+            while (sent < remaining.len) {
+                const n = c.send(self.sock, remaining.ptr + sent, @intCast(remaining.len - sent), 0);
+                if (n < 0) return error.SendFailed;
+                sent += @intCast(n);
+            }
+        } else {
+            @memcpy(self.buffer[self.buf_pos .. self.buf_pos + remaining.len], remaining);
+            self.buf_pos += remaining.len;
         }
     }
 
-    pub fn writeByte(self: *const SocketWriter, byte: u8) !void {
-        try self.writeAll(&[1]u8{byte});
+    pub fn writeByte(self: *StreamingPost, byte: u8) !void {
+        if (self.buf_pos >= self.buffer.len) {
+            try self.flush();
+        }
+        self.buffer[self.buf_pos] = byte;
+        self.buf_pos += 1;
     }
 
-    pub fn print(self: *const SocketWriter, comptime fmt: []const u8, args: anytype) !void {
+    pub fn print(self: *StreamingPost, comptime fmt: []const u8, args: anytype) !void {
         var buf: [256]u8 = undefined;
         const written = std.fmt.bufPrint(&buf, fmt, args) catch return error.BufferTooSmall;
         try self.writeAll(written);
     }
-};
 
-pub const StreamingPost = struct {
-    sock: c_int,
+    pub fn flush(self: *StreamingPost) !void {
+        if (self.buf_pos == 0) return;
 
-    pub fn writer(self: *StreamingPost) SocketWriter {
-        return .{ .sock = self.sock };
+        var sent: usize = 0;
+        while (sent < self.buf_pos) {
+            const n = c.send(self.sock, self.buffer[0..self.buf_pos].ptr + sent, @intCast(self.buf_pos - sent), 0);
+            if (n < 0) return error.SendFailed;
+            sent += @intCast(n);
+        }
+        self.buf_pos = 0;
     }
 
     pub fn close(self: *StreamingPost) void {

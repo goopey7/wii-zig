@@ -62,9 +62,7 @@ pub const ResultsReporter = struct {
     pub fn writeCSVRows(self: *ResultsReporter, writer: anytype) !void {
         const w = writer;
 
-        std.log.info("writing CSV header", .{});
         try w.writeAll(CSV_HEADER);
-        std.log.info("CSV header written", .{});
 
         for (self.results.items) |named_result| {
             for (named_result.result.allocations.items) |alloc| {
@@ -79,6 +77,5 @@ pub const ResultsReporter = struct {
                 try w.writeByte('\n');
             }
         }
-        std.log.info("all CSV rows written", .{});
     }
 };

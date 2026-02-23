@@ -20,6 +20,7 @@ pub fn build(b: *std.Build) !void {
     const server_module = b.createModule(.{
         .root_source_file = b.path("src/tools/server/root.zig"),
         .target = b.graph.host,
+        .link_libc = true,
     });
 
     const launcher_module = b.createModule(.{

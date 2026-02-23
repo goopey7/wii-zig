@@ -23,11 +23,12 @@ pub fn main() !void {
     std.log.info("Benchmark complete", .{});
 
     const csv_size = reporter.totalCSVSize();
-    std.log.info("CSV size: {}", .{csv_size});
+    std.log.info("CSV size: {} bytes", .{csv_size});
 
     var stream = try http.postStreaming("192.168.0.105", 3000, csv_size);
     defer stream.close();
-    std.log.info("stream created, about to write csv", .{});
-    try reporter.writeCSVRows(stream.writer());
-    std.log.info("csv written successfully", .{});
+    try reporter.writeCSVRows(&stream);
+    try stream.flush();
+    stream.close();
+    std.log.info("CSV sent!", .{});
 }
