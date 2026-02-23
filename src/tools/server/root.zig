@@ -27,10 +27,14 @@ pub fn runServer() !void {
 
         var req = try server_http.receiveHead();
 
+        std.debug.print("Received POST request, content-length: {?}\n", .{req.head.content_length});
+
         if (req.head.method == .POST) {
             var buffer: [1024]u8 = undefined;
             var body_reader = server_http.reader.bodyReader(&buffer, .none, req.head.content_length);
+            std.debug.print("Reading body...\n", .{});
             const body = try body_reader.readAlloc(allocator, req.head.content_length.?);
+            std.debug.print("Body read, size: {}\n", .{body.len});
 
             const now = std.time.timestamp();
             const filename = try std.fmt.allocPrint(allocator, "{}.csv", .{now});
@@ -38,6 +42,7 @@ pub fn runServer() !void {
             defer file.close();
             try file.writeAll(body);
             std.debug.print("CSV saved to {s}\n", .{filename});
+            std.debug.print("Server: done processing request\n", .{});
 
             try req.respond("CSV received successfully!", .{});
         } else {

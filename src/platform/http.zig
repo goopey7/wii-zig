@@ -86,3 +86,84 @@ pub fn post(url: []const u8, port: u16, data: []const u8) !Response {
     const response: Response = .{ .body = body_part, .status = @enumFromInt(status_code) };
     return response;
 }
+
+const SocketWriter = struct {
+    sock: c_int,
+
+    pub fn writeAll(self: *const SocketWriter, data: []const u8) !void {
+        var sent: usize = 0;
+        while (sent < data.len) {
+            const n = c.send(self.sock, data.ptr + sent, @intCast(data.len - sent), 0);
+            if (n < 0) return error.SendFailed;
+            sent += @intCast(n);
+        }
+    }
+
+    pub fn writeByte(self: *const SocketWriter, byte: u8) !void {
+        try self.writeAll(&[1]u8{byte});
+    }
+
+    pub fn print(self: *const SocketWriter, comptime fmt: []const u8, args: anytype) !void {
+        var buf: [256]u8 = undefined;
+        const written = std.fmt.bufPrint(&buf, fmt, args) catch return error.BufferTooSmall;
+        try self.writeAll(written);
+    }
+};
+
+pub const StreamingPost = struct {
+    sock: c_int,
+
+    pub fn writer(self: *StreamingPost) SocketWriter {
+        return .{ .sock = self.sock };
+    }
+
+    pub fn close(self: *StreamingPost) void {
+        _ = c.net_close(self.sock);
+    }
+};
+
+pub fn postStreaming(url: []const u8, port: u16, content_length: usize) !StreamingPost {
+    var splits = std.mem.splitAny(u8, url, "/");
+    const hostname = splits.first();
+    var hostname_buf: [256]u8 = undefined;
+    @memcpy(hostname_buf[0..hostname.len], hostname);
+    hostname_buf[hostname.len] = 0;
+
+    var addr: c.sockaddr_in = std.mem.zeroes(c.sockaddr_in);
+    addr.sin_family = c.AF_INET;
+    addr.sin_port = port;
+
+    const ip_numeric = c.inet_addr(&hostname_buf);
+    if (ip_numeric != c.INADDR_NONE) {
+        addr.sin_addr.s_addr = ip_numeric;
+    } else {
+        const host = c.net_gethostbyname(&hostname_buf);
+        const addr_ptr: *const u32 = @ptrCast(@alignCast(host.*.h_addr_list[0]));
+        addr.sin_addr.s_addr = addr_ptr.*;
+    }
+
+    const sock = c.socket(c.AF_INET, c.SOCK_STREAM, 0);
+    if (sock < 0) return error.SocketFailed;
+
+    if (c.connect(sock, @ptrCast(&addr), @sizeOf(c.sockaddr_in)) < 0) {
+        return error.ConnectFailed;
+    }
+
+    var route_buf: [256]u8 = undefined;
+    const header_fmt = "POST /{s} HTTP/1.1\r\n" ++
+        "Host: {s}\r\n" ++
+        "Content-Type: text/csv\r\n" ++
+        "Content-Length: {d}\r\n" ++
+        "\r\n";
+
+    const header = try std.fmt.bufPrint(&route_buf, header_fmt, .{ splits.rest(), hostname, content_length });
+
+    var sent: usize = 0;
+    while (sent < header.len) {
+        const n = c.send(sock, header.ptr + sent, @intCast(header.len - sent), 0);
+        if (n < 0) return error.SendFailed;
+        sent += @intCast(n);
+    }
+
+    return StreamingPost{ .sock = sock };
+}
