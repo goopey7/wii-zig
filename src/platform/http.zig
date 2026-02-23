@@ -9,25 +9,25 @@ pub const Response = struct {
     body: ?[]const u8,
 };
 
-pub fn post(url: []const u8, data: []const u8) !Response {
+pub fn post(url: []const u8, port: u16, data: []const u8) !Response {
     var splits = std.mem.splitAny(u8, url, "/");
     const hostname = splits.first();
     var hostname_buf: [256]u8 = undefined;
     @memcpy(hostname_buf[0..hostname.len], hostname);
     hostname_buf[hostname.len] = 0;
-    std.log.info("hostname: {}", .{hostname});
 
-    const host = c.net_gethostbyname(&hostname_buf);
     var addr: c.sockaddr_in = std.mem.zeroes(c.sockaddr_in);
     addr.sin_family = c.AF_INET;
-    addr.sin_port = 80;
+    addr.sin_port = port;
 
-    if (host == null) {
-        return error.isNull;
+    const ip_numeric = c.inet_addr(&hostname_buf);
+    if (ip_numeric != c.INADDR_NONE) {
+        addr.sin_addr.s_addr = ip_numeric;
+    } else {
+        const host = c.net_gethostbyname(&hostname_buf);
+        const addr_ptr: *const u32 = @ptrCast(@alignCast(host.*.h_addr_list[0]));
+        addr.sin_addr.s_addr = addr_ptr.*;
     }
-
-    const addr_ptr: *const u32 = @ptrCast(@alignCast(host.*.h_addr_list[0]));
-    addr.sin_addr.s_addr = addr_ptr.*;
 
     const sock = c.socket(c.AF_INET, c.SOCK_STREAM, 0);
     if (sock < 0) return error.SocketFailed;
@@ -46,7 +46,6 @@ pub fn post(url: []const u8, data: []const u8) !Response {
         "{s}";
 
     const request = try std.fmt.bufPrint(&route_buf, request_fmt, .{ splits.rest(), hostname, data.len, data });
-    std.log.info("Request: {}", .{request});
 
     var sent: usize = 0;
     while (sent < request.len) {
@@ -56,15 +55,26 @@ pub fn post(url: []const u8, data: []const u8) !Response {
     }
 
     var buf: [4096]u8 = undefined;
-    const n = c.recv(sock, &buf, buf.len, 0);
-    if (n < 0) return error.RecvFailed;
+    var pos: usize = 0;
+    while (true) {
+        const n = c.recv(sock, &buf, buf.len, 0);
+        if (n < 0) return error.RecvFailed;
+        if (n == 0) return error.ConnectionClosed;
+        pos += @intCast(n);
+        if (std.mem.indexOf(u8, buf[0..pos], "\r\n\r\n")) |_| {
+            if (pos >= 4) {
+                break;
+            }
+        }
 
-    const response_data = buf[0..@intCast(n)];
-    std.log.info("Response: {}", .{response_data});
+        if (pos >= buf.len) return error.ResponseTooBig;
+    }
+
+    const response_data = buf[0..pos];
 
     const header_end = std.mem.indexOf(u8, response_data, "\r\n\r\n") orelse return error.InvalidHttp;
     const header_part = response_data[0..header_end];
-    const body_part = response_data[header_end + 4..];
+    const body_part = response_data[header_end + 4 ..];
 
     var lines = std.mem.splitAny(u8, header_part, "\r\n");
     const status_line = lines.first();

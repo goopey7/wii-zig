@@ -21,9 +21,7 @@ pub fn main() !void {
     }
 
     std.log.info("Benchmark complete", .{});
-    const response = try http.post("httpbin.org/post", "Hello,World");
-    if (response.status == .ok) {
-        std.log.info("we got 200!!! status: {}", .{std.enums.tagName(http.Status, response.status).?});
-        std.log.info("Parsed Body: \n{}", .{response.body.?});
-    }
+    const response = try http.post("192.168.0.105", 3000, "Hello,World");
+    std.log.info("status: {}", .{std.enums.tagName(http.Status, response.status).?});
+    std.log.info("body: {}", .{response.body.?});
 }

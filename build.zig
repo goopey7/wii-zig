@@ -17,6 +17,22 @@ pub fn build(b: *std.Build) !void {
 
     const optimize = b.standardOptimizeOption(.{});
 
+    const server_module = b.createModule(.{
+        .root_source_file = b.path("src/tools/server/root.zig"),
+        .target = b.graph.host,
+    });
+
+    const launcher_module = b.createModule(.{
+        .root_source_file = b.path("src/tools/launcher/root.zig"),
+        .target = b.graph.host,
+    });
+    launcher_module.addImport("server", server_module);
+    const launcher_exe = b.addExecutable(.{
+        .root_module = launcher_module,
+        .name = "launcher",
+    });
+    const install_launcher = b.addInstallArtifact(launcher_exe, .{});
+
     const platform_module = b.createModule(.{
         .root_source_file = b.path("src/platform/root.zig"),
         .target = wii_target,
@@ -164,19 +180,22 @@ pub fn build(b: *std.Build) !void {
                             b.getInstallStep().dependOn(&install_dol.step);
 
                             const deploy_step = b.step("deploy", "Deploy to wii");
-                            const deploy_cmd = b.addSystemCommand(&.{ "wiiload", "zig-out/wii-zig.dol" });
-                            deploy_step.dependOn(&deploy_cmd.step);
-                            deploy_cmd.step.dependOn(&install_dol.step);
+                            const deploy_launcher_cmd = b.addRunArtifact(launcher_exe);
+                            deploy_launcher_cmd.addArg("deploy");
+                            deploy_launcher_cmd.step.dependOn(&install_dol.step);
+                            deploy_launcher_cmd.step.dependOn(&install_elf.step);
+                            deploy_launcher_cmd.step.dependOn(&install_launcher.step);
+                            deploy_step.dependOn(&deploy_launcher_cmd.step);
 
                             const run_step = b.step("run", "Run in dolphin");
-                            const run = b.addSystemCommand(&.{ "dolphin-emu-nogui", "zig-out/wii-zig.dol" });
-                            run_step.dependOn(&run.step);
-                            run.step.dependOn(&install_elf.step);
-                            run.step.dependOn(&install_dol.step);
-
+                            const run_launcher_cmd = b.addRunArtifact(launcher_exe);
+                            run_launcher_cmd.step.dependOn(&install_dol.step);
+                            run_launcher_cmd.step.dependOn(&install_elf.step);
+                            run_launcher_cmd.step.dependOn(&install_launcher.step);
+                            run_step.dependOn(&run_launcher_cmd.step);
                         },
                         1 => {
-                            const test_step = b.step("test", "Run tests");
+                            const test_step = b.step("test", "Run tests in dolphin");
                             const run = b.addSystemCommand(&.{ "dolphin-emu-nogui", "-p", "headless", "zig-out/test.dol" });
                             test_step.dependOn(&run.step);
                             run.step.dependOn(&unit_tests.step);
