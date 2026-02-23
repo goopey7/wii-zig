@@ -1,16 +1,15 @@
 const c = @import("root.zig").c;
 const std = @import("std");
 
-pub const Response = struct {};
-
-pub const Header = struct {
-    name: []const u8,
-    value: []const u8,
+pub const Status = enum(u16) {
+    ok = 200,
+};
+pub const Response = struct {
+    status: Status,
+    body: ?[]const u8,
 };
 
-pub fn post(url: []const u8, headers: []const Header, data: []const u8) !Response {
-    _ = headers;
-    _ = data;
+pub fn post(url: []const u8, data: []const u8) !Response {
     var splits = std.mem.splitAny(u8, url, "/");
     const hostname = splits.first();
     var hostname_buf: [256]u8 = undefined;
@@ -21,7 +20,7 @@ pub fn post(url: []const u8, headers: []const Header, data: []const u8) !Respons
     const host = c.net_gethostbyname(&hostname_buf);
     var addr: c.sockaddr_in = std.mem.zeroes(c.sockaddr_in);
     addr.sin_family = c.AF_INET;
-    addr.sin_port = 8080;
+    addr.sin_port = 80;
 
     if (host == null) {
         return error.isNull;
@@ -32,17 +31,22 @@ pub fn post(url: []const u8, headers: []const Header, data: []const u8) !Respons
 
     const sock = c.socket(c.AF_INET, c.SOCK_STREAM, 0);
     if (sock < 0) return error.SocketFailed;
+    defer _ = c.net_close(sock);
+
     if (c.connect(sock, @ptrCast(&addr), @sizeOf(c.sockaddr_in)) < 0) {
-        _ = c.net_close(sock);
         return error.ConnectFailed;
     }
 
-    const request = "POST / HTTP/1.1\r\n" ++
-        "Host: example.com\r\n" ++
+    var route_buf: [256]u8 = undefined;
+    const request_fmt = "POST /{s} HTTP/1.1\r\n" ++
+        "Host: {s}\r\n" ++
         "Content-Type: text/csv\r\n" ++
-        "Content-Length: 13\r\n" ++
+        "Content-Length: {}\r\n" ++
         "\r\n" ++
-        "Hello,World";
+        "{s}";
+
+    const request = try std.fmt.bufPrint(&route_buf, request_fmt, .{ splits.rest(), hostname, data.len, data });
+    std.log.info("Request: {}", .{request});
 
     var sent: usize = 0;
     while (sent < request.len) {
@@ -55,10 +59,20 @@ pub fn post(url: []const u8, headers: []const Header, data: []const u8) !Respons
     const n = c.recv(sock, &buf, buf.len, 0);
     if (n < 0) return error.RecvFailed;
 
-    const response = buf[0..@intCast(n)];
-    std.log.info("Response: {}", .{response});
+    const response_data = buf[0..@intCast(n)];
+    std.log.info("Response: {}", .{response_data});
 
-    _ = c.net_close(sock);
-    
-    return error.NotImplemented;
+    const header_end = std.mem.indexOf(u8, response_data, "\r\n\r\n") orelse return error.InvalidHttp;
+    const header_part = response_data[0..header_end];
+    const body_part = response_data[header_end + 4..];
+
+    var lines = std.mem.splitAny(u8, header_part, "\r\n");
+    const status_line = lines.first();
+    var parts = std.mem.splitAny(u8, status_line, " ");
+    _ = parts.next();
+    const status_code_str = parts.next().?;
+    const status_code = try std.fmt.parseInt(u16, status_code_str, 10);
+
+    const response: Response = .{ .body = body_part, .status = @enumFromInt(status_code) };
+    return response;
 }
