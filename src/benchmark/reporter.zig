@@ -2,7 +2,7 @@ const std = @import("std");
 const WorkloadResult = @import("workloads.zig").WorkloadResult;
 const Arena = @import("common").allocator.Arena;
 
-const CSV_HEADER = "workload_name,id,size,actual_size,alloc_time_us,free_time_us,arena\n";
+const CSV_HEADER = "workload_name,id,size,actual_size,alloc_time_ns,free_time_ns,arena\n";
 
 pub const ResultsReporter = struct {
     const NamedResult = struct {
@@ -51,8 +51,8 @@ pub const ResultsReporter = struct {
                 total += intLen(alloc.id) + 1;
                 total += intLen(alloc.size) + 1;
                 total += intLen(alloc.actual_size) + 1;
-                total += intLen(alloc.alloc_time_us) + 1;
-                total += intLen(alloc.free_time_us.?) + 1;
+                total += intLen(alloc.alloc_time_ns) + 1;
+                total += intLen(alloc.free_time_ns.?) + 1;
                 total += std.enums.tagName(Arena, alloc.arena).?.len + 1;
             }
         }
@@ -71,8 +71,8 @@ pub const ResultsReporter = struct {
                 try w.print("{d},", .{alloc.id});
                 try w.print("{d},", .{alloc.size});
                 try w.print("{d},", .{alloc.actual_size});
-                try w.print("{d},", .{alloc.alloc_time_us});
-                try w.print("{d},", .{alloc.free_time_us.?});
+                try w.print("{d},", .{alloc.alloc_time_ns});
+                try w.print("{d},", .{alloc.free_time_ns.?});
                 try w.writeAll(std.enums.tagName(Arena, alloc.arena).?);
                 try w.writeByte('\n');
             }

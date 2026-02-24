@@ -10,8 +10,8 @@ const AllocationRecord = struct {
     ptr: []u8,
     size: usize,
     actual_size: usize,
-    alloc_time_us: u64,
-    free_time_us: ?u64,
+    alloc_time_ns: u64,
+    free_time_ns: ?u64,
     arena: Arena,
 };
 
@@ -46,9 +46,9 @@ pub const FrameBasedWorkload = struct {
                             .ptr = ptr[0..ptr.len],
                             .size = size,
                             .actual_size = ptr.len,
-                            .alloc_time_us = try alloc_timer.getTimeElapsed(.microseconds),
+                            .alloc_time_ns = try alloc_timer.getTimeElapsed(.nanoseconds),
                             .arena = alloc_interface.getArena(),
-                            .free_time_us = null,
+                            .free_time_ns = null,
                         };
                         try result.allocations.append(bench_alloc, allocation);
                     } else |_| {}
@@ -60,7 +60,7 @@ pub const FrameBasedWorkload = struct {
                     var free_timer = Timer.start();
                     std_alloc.free(result.allocations.items[i].ptr);
                     free_timer.stop();
-                    result.allocations.items[i].free_time_us = try free_timer.getTimeElapsed(.microseconds);
+                    result.allocations.items[i].free_time_ns = try free_timer.getTimeElapsed(.nanoseconds);
                 }
             }
         }
