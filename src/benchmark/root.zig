@@ -25,7 +25,7 @@ pub fn main() !void {
     const csv_size = reporter.totalCSVSize();
     std.log.info("CSV size: {} bytes", .{csv_size});
 
-    var stream = try http.postStreaming("192.168.0.105", 3000, csv_size);
+    var stream = try http.postStreaming("192.168.0.106", 3000, csv_size);
     defer stream.close();
     try reporter.writeCSVRows(&stream);
     try stream.flush();

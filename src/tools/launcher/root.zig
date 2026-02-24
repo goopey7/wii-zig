@@ -1,7 +1,18 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const runServer = @import("server").runServer;
 
 pub fn main() !void {
+    const host_os = builtin.os.tag;
+    const dolphin_exe = switch (host_os) {
+        .windows => "C:\\Program Files\\Dolphin\\Dolphin.exe",
+        else => "dolphin-emu-nogui",
+    };
+    const dolphin_args = switch (host_os) {
+        .windows => "/e zig-out/wii-zig.dol",
+        else => "zig-out/wii-zig.dol",
+    };
+
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
@@ -11,8 +22,9 @@ pub fn main() !void {
     _ = argv.skip();
 
     if (argv.next()) |_| {
+        const wiiload_exe = argv.next().?;
         var wiiload = std.process.Child.init(&[_][]const u8{
-            "wiiload", "zig-out/wii-zig.dol",
+            wiiload_exe, "zig-out/wii-zig.dol",
         }, allocator);
         try wiiload.spawn();
         _ = try wiiload.wait();
@@ -22,8 +34,8 @@ pub fn main() !void {
         _ = try std.Thread.spawn(.{}, runServerThread, .{});
 
         var dolphin = std.process.Child.init(&[_][]const u8{
-            "dolphin-emu-nogui",
-            "zig-out/wii-zig.dol",
+            dolphin_exe,
+            dolphin_args,
         }, allocator);
         try dolphin.spawn();
 

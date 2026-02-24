@@ -1,7 +1,5 @@
 const std = @import("std");
-const c = @cImport({
-    @cInclude("sys/socket.h");
-});
+const builtin = @import("builtin");
 
 pub fn runServer() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -17,19 +15,20 @@ pub fn runServer() !void {
             error.ConnectionAborted => break,
             else => return err,
         };
+        defer conn.stream.close();
 
-        const sock = @as(c_int, @intCast(conn.stream.handle));
+        const handle = conn.stream.handle;
 
         var header_buf: [2048]u8 = undefined;
         var header_len: usize = 0;
 
         while (true) {
-            const n = c.recv(sock, &header_buf[header_len], 1, 0);
-            if (n <= 0) {
+            const n_isize = recv(handle, header_buf[header_len..][0..1]);
+            if (n_isize <= 0) {
                 std.debug.print("Error reading headers or connection closed\n", .{});
                 break;
             }
-            header_len += @intCast(n);
+            header_len += @intCast(n_isize);
 
             if (header_len >= 4) {
                 if (std.mem.eql(u8, header_buf[header_len - 4 ..][0..4], "\r\n\r\n")) {
@@ -49,7 +48,7 @@ pub fn runServer() !void {
         while (lines.next()) |line| {
             if (std.mem.startsWith(u8, line, "Content-Length:")) {
                 var parts = std.mem.splitAny(u8, line, " ");
-                _ = parts.next(); // skip "Content-Length:"
+                _ = parts.next();
                 if (parts.next()) |len_str| {
                     content_length = try std.fmt.parseInt(usize, len_str, 10);
                 }
@@ -63,7 +62,7 @@ pub fn runServer() !void {
         var read_buf: [8192]u8 = undefined;
         while (body_read < content_length) {
             const to_read = @min(read_buf.len, content_length - body_read);
-            const n_isize = c.recv(sock, &read_buf, to_read, 0);
+            const n_isize = recv(handle, read_buf[0..to_read]);
             if (n_isize <= 0) {
                 std.debug.print("Connection closed while reading body, got {} of {}\n", .{ body_read, content_length });
                 break;
@@ -82,11 +81,70 @@ pub fn runServer() !void {
         const response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 25\r\n\r\nCSV received successfully!";
         var sent: usize = 0;
         while (sent < response.len) {
-            const n = c.send(sock, response.ptr + sent, response.len - sent, 0);
-            if (n <= 0) break;
-            sent += @intCast(n);
+            const n_isize = send(handle, response[sent..]);
+            if (n_isize <= 0) break;
+            sent += @intCast(n_isize);
         }
-
-        conn.stream.close();
     }
+}
+
+fn recv(handle: std.net.Stream.Handle, buf: []u8) isize {
+    if (builtin.os.tag == .windows) {
+        return windows_recv(handle, buf);
+    } else {
+        return posix_recv(handle, buf);
+    }
+}
+
+fn send(handle: std.net.Stream.Handle, buf: []const u8) isize {
+    if (builtin.os.tag == .windows) {
+        return windows_send(handle, buf);
+    } else {
+        return posix_send(handle, buf);
+    }
+}
+
+fn posix_recv(handle: std.net.Stream.Handle, buf: []u8) isize {
+    const c = @cImport({
+        @cInclude("sys/socket.h");
+    });
+    return c.recv(handle, buf.ptr, buf.len, 0);
+}
+
+fn posix_send(handle: std.net.Stream.Handle, buf: []const u8) isize {
+    const c = @cImport({
+        @cInclude("sys/socket.h");
+    });
+    return c.send(handle, buf.ptr, buf.len, 0);
+}
+
+fn windows_recv(handle: std.net.Stream.Handle, buf: []u8) isize {
+    const w = @cImport({
+        @cInclude("winsock2.h");
+        @cInclude("ws2tcpip.h");
+    });
+    const sock = @as(w.SOCKET, @intFromPtr(handle));
+    var wsabuf = [1]w.WSABUF{.{ .len = @truncate(buf.len), .buf = buf.ptr }};
+    var flags: w.DWORD = 0;
+    var bytes_read: w.DWORD = 0;
+    const result = w.WSARecv(sock, &wsabuf, 1, &bytes_read, &flags, null, null);
+    if (result != 0) {
+        return -1;
+    }
+    return @intCast(bytes_read);
+}
+
+fn windows_send(handle: std.net.Stream.Handle, buf: []const u8) isize {
+    const w = @cImport({
+        @cInclude("winsock2.h");
+        @cInclude("ws2tcpip.h");
+    });
+    const sock = @as(w.SOCKET, @intFromPtr(handle));
+    var wsabuf = [1]w.WSABUF{.{ .len = @truncate(buf.len), .buf = @constCast(buf.ptr) }};
+    var bytes_sent: w.DWORD = 0;
+    const result = w.WSASend(sock, &wsabuf, 1, &bytes_sent, 0, null, null);
+    if (result != 0) {
+        return -1;
+    }
+    return @intCast(bytes_sent);
 }

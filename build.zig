@@ -142,6 +142,7 @@ pub fn build(b: *std.Build) !void {
         const ext = if (host.os.tag == .windows) ".exe" else "";
         const gcc_path = wii.path(b.fmt("devkitPPC/bin/powerpc-eabi-gcc{s}", .{ext})).getPath(b);
         const elf2dol_path = wii.path(b.fmt("tools/bin/elf2dol{s}", .{ext})).getPath(b);
+        const wiiload_path = wii.path(b.fmt("tools/bin/wiiload{s}", .{ext})).getPath(b);
         const libogc_lib = b.fmt("-L{s}", .{wii.path("libogc/lib/wii").getPath(b)});
 
         inline for (objects, 0..) |obj, idx| {
@@ -183,6 +184,7 @@ pub fn build(b: *std.Build) !void {
                             const deploy_step = b.step("deploy", "Deploy to wii");
                             const deploy_launcher_cmd = b.addRunArtifact(launcher_exe);
                             deploy_launcher_cmd.addArg("deploy");
+                            deploy_launcher_cmd.addArg(wiiload_path);
                             deploy_launcher_cmd.step.dependOn(&install_dol.step);
                             deploy_launcher_cmd.step.dependOn(&install_elf.step);
                             deploy_launcher_cmd.step.dependOn(&install_launcher.step);
