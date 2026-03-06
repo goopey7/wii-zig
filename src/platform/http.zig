@@ -25,8 +25,16 @@ pub fn post(url: []const u8, port: u16, data: []const u8) !Response {
         addr.sin_addr.s_addr = ip_numeric;
     } else {
         const host = c.net_gethostbyname(&hostname_buf);
-        const addr_ptr: *const u32 = @ptrCast(@alignCast(host.*.h_addr_list[0]));
-        addr.sin_addr.s_addr = addr_ptr.*;
+        if (host) |h| {
+            if (h.*.h_addr_list[0]) |addr_ptr| {
+                const addr_p: *const u32 = @ptrCast(@alignCast(addr_ptr));
+                addr.sin_addr.s_addr = addr_p.*;
+            } else {
+                return error.DnsNoAddress;
+            }
+        } else {
+            return error.DnsFailed;
+        }
     }
 
     const sock = c.socket(c.AF_INET, c.SOCK_STREAM, 0);
@@ -138,6 +146,41 @@ pub const StreamingPost = struct {
         self.buf_pos = 0;
     }
 
+    pub fn readResponse(self: *StreamingPost) !Response {
+        var buf: [4096]u8 = undefined;
+        var pos: usize = 0;
+
+        while (true) {
+            const n = c.recv(self.sock, &buf, buf.len, 0);
+            if (n < 0) {
+                return error.RecvFailed;
+            }
+            if (n == 0) {
+                break;
+            }
+            pos += @intCast(n);
+
+            if (std.mem.indexOf(u8, buf[0..pos], "\r\n\r\n")) |_| {
+                if (pos >= 4) {
+                    break;
+                }
+            }
+
+            if (pos >= buf.len) {
+                return error.ResponseTooBig;
+            }
+        }
+
+        const header_end = std.mem.indexOf(u8, buf[0..pos], "\r\n\r\n") orelse return error.InvalidHttp;
+        const body_part = buf[header_end + 4 .. pos];
+
+        var lines = std.mem.splitAny(u8, buf[0..header_end], "\r\n");
+        var parts = std.mem.splitAny(u8, lines.first(), " ");
+        _ = parts.next();
+        const status_code = try std.fmt.parseInt(u16, parts.next().?, 10);
+        return .{ .body = body_part, .status = @enumFromInt(status_code) };
+    }
+
     pub fn close(self: *StreamingPost) void {
         _ = c.net_close(self.sock);
     }
@@ -159,8 +202,16 @@ pub fn postStreaming(url: []const u8, port: u16, content_length: usize) !Streami
         addr.sin_addr.s_addr = ip_numeric;
     } else {
         const host = c.net_gethostbyname(&hostname_buf);
-        const addr_ptr: *const u32 = @ptrCast(@alignCast(host.*.h_addr_list[0]));
-        addr.sin_addr.s_addr = addr_ptr.*;
+        if (host) |h| {
+            if (h.*.h_addr_list[0]) |addr_ptr| {
+                const addr_p: *const u32 = @ptrCast(@alignCast(addr_ptr));
+                addr.sin_addr.s_addr = addr_p.*;
+            } else {
+                return error.DnsNoAddress;
+            }
+        } else {
+            return error.DnsFailed;
+        }
     }
 
     const sock = c.socket(c.AF_INET, c.SOCK_STREAM, 0);
