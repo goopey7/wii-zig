@@ -72,7 +72,10 @@ fn printValue(value: anytype) void {
             if (ptr_info.size == .slice and ptr_info.child == u8) {
                 _ = std.c.printf("%.*s", @as(c_int, @intCast(value.len)), value.ptr);
                 c.SYS_Report("%.*s", @as(c_int, @intCast(value.len)), value.ptr);
-            } else if (ptr_info.size == .One and ptr_info.is_const and ptr_info.child == [ptr_info.sentinel orelse 0:0]u8) {
+            } else if (ptr_info.size == .one and ptr_info.is_const and ptr_info.child == [ptr_info.sentinel orelse 0:0]u8) {
+                _ = std.c.printf("%s", value);
+                c.SYS_Report("%s", value);
+            } else if (ptr_info.size == .many and ptr_info.child == u8) {
                 _ = std.c.printf("%s", value);
                 c.SYS_Report("%s", value);
             } else {

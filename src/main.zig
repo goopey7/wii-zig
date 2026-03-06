@@ -3,12 +3,15 @@ const log = @import("platform").log;
 const c = @import("platform").c;
 const wpad = @import("platform").wpad;
 const bench = @import("benchmark");
+const crash = @import("platform").crash;
 
 pub const std_options = std.Options{
     .logFn = log,
 };
 
 fn init() !void {
+    try crash.checkForPendingCrash();
+    c.PPCExcptCurPanicFn = crash.handler;
     c.VIDEO_Init();
     _ = wpad.WPAD_Init();
     _ = c.consoleInit(null);
