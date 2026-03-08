@@ -10,7 +10,6 @@ pub const std_options = std.Options{
 };
 
 fn init() !void {
-    try crash.checkForPendingCrash();
     c.PPCExcptCurPanicFn = crash.handler;
     c.VIDEO_Init();
     _ = wpad.WPAD_Init();
@@ -22,6 +21,7 @@ fn init() !void {
     if (ret < 0) {
         return error.InitNetworkFailed;
     }
+    try crash.init();
     const net_log = std.log.scoped(.Network);
     net_log.info("local ip: {}", .{local_ip});
     net_log.info("netmask: {}", .{netmask});
@@ -29,6 +29,9 @@ fn init() !void {
 }
 
 fn entry() !void {
+    std.log.info("wazah", .{});
+    const ptr: *volatile u32 = @ptrFromInt(8);
+    ptr.* = 0xDEADC0DE;
     try bench.main();
 }
 

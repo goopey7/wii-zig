@@ -1,7 +1,29 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-pub fn runServer() !void {
+pub fn runCrashReceiver() !void {
+    const port = 9000;
+    var addr = try std.net.Address.parseIp4("0.0.0.0", port);
+    const sock = try std.posix.socket(std.posix.AF.INET, std.posix.SOCK.DGRAM, std.posix.IPPROTO.UDP);
+    defer std.posix.close(sock);
+    try std.posix.bind(sock, &addr.any, addr.getOsSockLen());
+
+    std.debug.print("Crash receiver listening on UDP port {}\n", .{port});
+
+    var buf: [1024]u8 = undefined;
+    while (true) {
+        const bytes_read = try std.posix.recvfrom(sock, &buf, 0, null, null);
+        if (bytes_read > 0) {
+            const timestamp = std.time.timestamp();
+            const filename = try std.fmt.allocPrint(std.heap.page_allocator, "crash_{d}.bin", .{timestamp});
+
+            try std.fs.cwd().writeFile(.{ .sub_path = filename, .data = buf[0..bytes_read] });
+            std.debug.print("Crash dump saved to {s}\n", .{filename});
+        }
+    }
+}
+
+pub fn runCSVHttpServer() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();

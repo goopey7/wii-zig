@@ -1,6 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const runServer = @import("server").runServer;
+const server = @import("server");
 
 pub fn main() !void {
     const host_os = builtin.os.tag;
@@ -46,5 +46,9 @@ pub fn main() !void {
 }
 
 fn runServerThread() !void {
-    try runServer();
+    const csv_http_thread = try std.Thread.spawn(.{}, server.runCSVHttpServer, .{});
+    const crash_thread = try std.Thread.spawn(.{}, server.runCrashReceiver, .{});
+
+    csv_http_thread.join();
+    crash_thread.join();
 }
