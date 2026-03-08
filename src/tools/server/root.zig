@@ -3,20 +3,38 @@ const std = @import("std");
 pub fn runCrashReceiver() !void {
     const port = 9000;
     var addr = try std.net.Address.parseIp4("0.0.0.0", port);
-    const sock = try std.posix.socket(std.posix.AF.INET, std.posix.SOCK.DGRAM, std.posix.IPPROTO.UDP);
-    defer std.posix.close(sock);
-    try std.posix.bind(sock, &addr.any, addr.getOsSockLen());
+    var server = try addr.listen(.{ .reuse_address = true });
+    defer server.deinit();
 
-    std.debug.print("Crash receiver listening on UDP port {}\n", .{port});
+    std.debug.print("Crash receiver listening on TCP port {}\n", .{port});
 
-    var buf: [1024]u8 = undefined;
     while (true) {
-        const bytes_read = try std.posix.recvfrom(sock, &buf, 0, null, null);
-        if (bytes_read > 0) {
+        std.debug.print("Waiting for crash connection...\n", .{});
+        const conn = server.accept() catch |err| switch (err) {
+            error.ConnectionAborted => break,
+            else => return err,
+        };
+        defer conn.stream.close();
+
+        std.debug.print("Client connected!\n", .{});
+
+        var buf: [1024]u8 = undefined;
+        var total_read: usize = 0;
+
+        while (total_read < 8) {
+            const bytes_read = try conn.stream.read(buf[total_read..]);
+            std.debug.print("Read {} bytes\n", .{bytes_read});
+            if (bytes_read == 0) break;
+            total_read += bytes_read;
+        }
+
+        std.debug.print("Total read: {}\n", .{total_read});
+
+        if (total_read > 0) {
             const timestamp = std.time.timestamp();
             const filename = try std.fmt.allocPrint(std.heap.page_allocator, "crash_{d}.bin", .{timestamp});
 
-            try std.fs.cwd().writeFile(.{ .sub_path = filename, .data = buf[0..bytes_read] });
+            try std.fs.cwd().writeFile(.{ .sub_path = filename, .data = buf[0..total_read] });
             std.debug.print("Crash dump saved to {s}\n", .{filename});
         }
     }
