@@ -1,5 +1,4 @@
 const std = @import("std");
-const builtin = @import("builtin");
 
 pub fn runCrashReceiver() !void {
     const port = 9000;
@@ -45,7 +44,7 @@ pub fn runCSVHttpServer() !void {
         var header_len: usize = 0;
 
         while (true) {
-            const n_isize = recv(handle, header_buf[header_len..][0..1]);
+            const n_isize = try std.posix.recv(handle, header_buf[header_len..][0..1], 0);
             if (n_isize <= 0) {
                 std.debug.print("Error reading headers or connection closed\n", .{});
                 break;
@@ -84,7 +83,7 @@ pub fn runCSVHttpServer() !void {
         var read_buf: [8192]u8 = undefined;
         while (body_read < content_length) {
             const to_read = @min(read_buf.len, content_length - body_read);
-            const n_isize = recv(handle, read_buf[0..to_read]);
+            const n_isize = try std.posix.recv(handle, read_buf[0..to_read], 0);
             if (n_isize <= 0) {
                 std.debug.print("Connection closed while reading body, got {} of {}\n", .{ body_read, content_length });
                 break;
@@ -103,70 +102,9 @@ pub fn runCSVHttpServer() !void {
         const response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 25\r\n\r\nCSV received successfully!";
         var sent: usize = 0;
         while (sent < response.len) {
-            const n_isize = send(handle, response[sent..]);
+            const n_isize = try std.posix.send(handle, response[sent..], 0);
             if (n_isize <= 0) break;
             sent += @intCast(n_isize);
         }
     }
-}
-
-fn recv(handle: std.net.Stream.Handle, buf: []u8) isize {
-    if (builtin.os.tag == .windows) {
-        return windows_recv(handle, buf);
-    } else {
-        return posix_recv(handle, buf);
-    }
-}
-
-fn send(handle: std.net.Stream.Handle, buf: []const u8) isize {
-    if (builtin.os.tag == .windows) {
-        return windows_send(handle, buf);
-    } else {
-        return posix_send(handle, buf);
-    }
-}
-
-fn posix_recv(handle: std.net.Stream.Handle, buf: []u8) isize {
-    const c = @cImport({
-        @cInclude("sys/socket.h");
-    });
-    return c.recv(handle, buf.ptr, buf.len, 0);
-}
-
-fn posix_send(handle: std.net.Stream.Handle, buf: []const u8) isize {
-    const c = @cImport({
-        @cInclude("sys/socket.h");
-    });
-    return c.send(handle, buf.ptr, buf.len, 0);
-}
-
-fn windows_recv(handle: std.net.Stream.Handle, buf: []u8) isize {
-    const w = @cImport({
-        @cInclude("winsock2.h");
-        @cInclude("ws2tcpip.h");
-    });
-    const sock = @as(w.SOCKET, @intFromPtr(handle));
-    var wsabuf = [1]w.WSABUF{.{ .len = @truncate(buf.len), .buf = buf.ptr }};
-    var flags: w.DWORD = 0;
-    var bytes_read: w.DWORD = 0;
-    const result = w.WSARecv(sock, &wsabuf, 1, &bytes_read, &flags, null, null);
-    if (result != 0) {
-        return -1;
-    }
-    return @intCast(bytes_read);
-}
-
-fn windows_send(handle: std.net.Stream.Handle, buf: []const u8) isize {
-    const w = @cImport({
-        @cInclude("winsock2.h");
-        @cInclude("ws2tcpip.h");
-    });
-    const sock = @as(w.SOCKET, @intFromPtr(handle));
-    var wsabuf = [1]w.WSABUF{.{ .len = @truncate(buf.len), .buf = @constCast(buf.ptr) }};
-    var bytes_sent: w.DWORD = 0;
-    const result = w.WSASend(sock, &wsabuf, 1, &bytes_sent, 0, null, null);
-    if (result != 0) {
-        return -1;
-    }
-    return @intCast(bytes_sent);
 }
