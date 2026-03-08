@@ -11,9 +11,25 @@ pub const CRASH_DUMP_PORT_DOLPHIN: u16 = 9000;
 var crash_socket: c_int = -1;
 var target_addr: c.sockaddr_in = undefined;
 
+pub const Exid = enum(u32) {
+    Reset = 1,
+    Mchk = 2,
+    Dsi = 3,
+    ISI = 4,
+    IRQ = 5,
+    ALIGN = 6,
+    UNDEF = 7,
+    FPU = 8,
+    DECR = 9,
+    SYSCALL = 12,
+    TRACE = 13,
+    PM = 15,
+    BKPT = 19,
+};
+
 pub const CrashDump = struct {
     pc: u32,
-    exid: u32,
+    exid: Exid,
 };
 
 pub fn init() !void {
@@ -44,6 +60,7 @@ pub fn init() !void {
 }
 
 pub fn handler(exid: c_uint, ctx_ptr: [*c]c.PPCContext) callconv(.c) void {
+    const exid_enum: Exid = @enumFromInt(exid);
     const log = std.log.scoped(.CrashHandler);
     const S = struct {
         var in_handler: bool = false;
@@ -62,10 +79,10 @@ pub fn handler(exid: c_uint, ctx_ptr: [*c]c.PPCContext) callconv(.c) void {
     };
     const dump = CrashDump{
         .pc = ctx.pc,
-        .exid = exid,
+        .exid = exid_enum,
     };
 
-    log.info("Sending crash dump, pc=0x{x}, exid={}", .{ dump.pc, dump.exid });
+    log.info("Sending crash dump, pc=0x{x}, exid={}", .{ dump.pc, @tagName(dump.exid) });
 
     if (crash_socket >= 0) {
         var retries: u32 = 0;
