@@ -4,6 +4,7 @@ const c = @import("platform").c;
 const wpad = @import("platform").wpad;
 const bench = @import("benchmark");
 const crash = @import("platform").crash;
+const platform = @import("platform");
 
 pub const std_options = std.Options{
     .logFn = log,
@@ -21,15 +22,14 @@ fn init() !void {
     if (ret < 0) {
         return error.InitNetworkFailed;
     }
-    try crash.init();
     const net_log = std.log.scoped(.Network);
     net_log.info("local ip: {}", .{local_ip});
     net_log.info("netmask: {}", .{netmask});
     net_log.info("gateway: {}", .{gateway});
+    try crash.init();
 }
 
 fn entry() !void {
-    std.log.info("wazah", .{});
     const ptr: *volatile u32 = @ptrFromInt(8);
     ptr.* = 0xDEADC0DE;
     try bench.main();

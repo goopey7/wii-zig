@@ -4,6 +4,13 @@ const BenchmarkConfig = @import("config.zig").BenchmarkConfig;
 const allocator = @import("common").allocator;
 const ResultsReporter = @import("reporter.zig").ResultsReporter;
 const http = @import("platform").http;
+const dolphin = @import("platform").dolphin;
+const c = @import("platform").c;
+
+pub const CSV_HOST_DOLPHIN = "127.0.0.1";
+pub const CSV_PORT_DOLPHIN: u16 = 3000;
+pub const CSV_HOST = "192.168.0.108";
+pub const CSV_PORT: u16 = 3000;
 
 pub fn main() !void {
     std.log.info("Benchmark starting", .{});
@@ -25,7 +32,9 @@ pub fn main() !void {
     const csv_size = reporter.totalCSVSize();
     std.log.info("CSV size: {} bytes", .{csv_size});
 
-    var stream = try http.postStreaming("192.168.0.106", 3000, csv_size);
+    const host = if (dolphin.isDolphin()) CSV_HOST_DOLPHIN else CSV_HOST;
+    const port = if (dolphin.isDolphin()) CSV_PORT_DOLPHIN else CSV_PORT;
+    var stream = try http.postStreaming(host, port, csv_size);
     defer stream.close();
     try reporter.writeCSVRows(&stream);
     try stream.flush();
