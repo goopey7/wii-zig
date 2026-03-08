@@ -26,14 +26,27 @@ pub fn log(
     comptime var i = 0;
 
     inline while (i < format.len) : (i += 1) {
-        if (format[i] == '{' and i + 1 < format.len and format[i + 1] == '}') {
-            const fields = args_type_info.@"struct".fields;
-            if (arg_index < fields.len) {
-                const value = @field(args, fields[arg_index].name);
-                printValue(value);
-                arg_index += 1;
+        if (format[i] == '{') {
+            if (i + 1 < format.len and format[i + 1] == 'x' and i + 2 < format.len and format[i + 2] == '}') {
+                const fields = args_type_info.@"struct".fields;
+                if (arg_index < fields.len) {
+                    const value = @field(args, fields[arg_index].name);
+                    printValueHex(value);
+                    arg_index += 1;
+                }
+                i += 2;
+            } else if (i + 1 < format.len and format[i + 1] == '}') {
+                const fields = args_type_info.@"struct".fields;
+                if (arg_index < fields.len) {
+                    const value = @field(args, fields[arg_index].name);
+                    printValue(value);
+                    arg_index += 1;
+                }
+                i += 1;
+            } else {
+                _ = c.putchar(format[i]);
+                c.SYS_Report("%c", format[i]);
             }
-            i += 1;
         } else {
             _ = c.putchar(format[i]);
             c.SYS_Report("%c", format[i]);
@@ -93,6 +106,21 @@ fn printValue(value: anytype) void {
         },
         else => {
             @compileError("Unable to print value of type " ++ @typeName(T));
+        },
+    }
+}
+
+fn printValueHex(value: anytype) void {
+    const T = @TypeOf(value);
+
+    switch (@typeInfo(T)) {
+        .int, .comptime_int => {
+            const converted_val = @as(c_ulonglong, value);
+            _ = std.c.printf("%llx", converted_val);
+            c.SYS_Report("%llx", converted_val);
+        },
+        else => {
+            @compileError("Unable to print hex value of type " ++ @typeName(T));
         },
     }
 }
