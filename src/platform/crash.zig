@@ -1,8 +1,12 @@
 const http = @import("http.zig");
 const c = @import("platform.zig").c;
+const dolphin = @import("dolphin.zig");
 const std = @import("std");
 
-pub const CRASH_DUMP_HOST = "127.0.0.1";
+pub const CRASH_DUMP_HOST_DOLPHIN = "127.0.0.1";
+pub const CRASH_DUMP_PORT_DOLPHIN: u16 = 9000;
+
+pub const CRASH_DUMP_HOST = "192.168.0.8";
 pub const CRASH_DUMP_PORT: u16 = 9000;
 
 var crash_socket: c_int = -1;
@@ -14,6 +18,9 @@ pub const CrashDump = struct {
 };
 
 pub fn init() !void {
+    const is_dolphin = dolphin.isDolphin();
+    const host = if (is_dolphin) CRASH_DUMP_HOST_DOLPHIN else CRASH_DUMP_HOST;
+    const port = if (is_dolphin) CRASH_DUMP_PORT_DOLPHIN else CRASH_DUMP_PORT;
     crash_socket = c.socket(c.AF_INET, c.SOCK_DGRAM, 0);
     if (crash_socket < 0) {
         return error.SocketFailed;
@@ -21,9 +28,9 @@ pub fn init() !void {
 
     target_addr = std.mem.zeroes(c.sockaddr_in);
     target_addr.sin_family = c.AF_INET;
-    target_addr.sin_port = CRASH_DUMP_PORT;
+    target_addr.sin_port = port;
 
-    const ip_addr = c.inet_addr(CRASH_DUMP_HOST);
+    const ip_addr = c.inet_addr(host);
     if (ip_addr == c.INADDR_NONE) {
         return error.InvalidIP;
     }
