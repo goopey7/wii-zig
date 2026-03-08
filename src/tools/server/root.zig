@@ -1,41 +1,42 @@
 const std = @import("std");
 
 pub fn runCrashReceiver() !void {
+    const log = std.log.scoped(.CrashReceiver);
     const port = 9000;
     var addr = try std.net.Address.parseIp4("0.0.0.0", port);
     var server = try addr.listen(.{ .reuse_address = true });
     defer server.deinit();
 
-    std.debug.print("Crash receiver listening on TCP port {}\n", .{port});
+    log.info("Crash receiver listening on TCP port {}", .{port});
 
     while (true) {
-        std.debug.print("Waiting for crash connection...\n", .{});
+        log.debug("Waiting for crash connection...", .{});
         const conn = server.accept() catch |err| switch (err) {
             error.ConnectionAborted => break,
             else => return err,
         };
         defer conn.stream.close();
 
-        std.debug.print("Client connected!\n", .{});
+        log.debug("Client connected!", .{});
 
         var buf: [1024]u8 = undefined;
         var total_read: usize = 0;
 
         while (total_read < 8) {
             const bytes_read = try conn.stream.read(buf[total_read..]);
-            std.debug.print("Read {} bytes\n", .{bytes_read});
+            log.debug("Read {} bytes", .{bytes_read});
             if (bytes_read == 0) break;
             total_read += bytes_read;
         }
 
-        std.debug.print("Total read: {}\n", .{total_read});
+        log.debug("Total read: {}", .{total_read});
 
         if (total_read > 0) {
             const timestamp = std.time.timestamp();
             const filename = try std.fmt.allocPrint(std.heap.page_allocator, "crash_{d}.bin", .{timestamp});
 
             try std.fs.cwd().writeFile(.{ .sub_path = filename, .data = buf[0..total_read] });
-            std.debug.print("Crash dump saved to {s}\n", .{filename});
+            log.debug("Crash dump saved to {s}", .{filename});
         }
     }
 }

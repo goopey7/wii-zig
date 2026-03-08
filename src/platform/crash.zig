@@ -44,19 +44,20 @@ pub fn init() !void {
 }
 
 pub fn handler(exid: c_uint, ctx_ptr: [*c]c.PPCContext) callconv(.c) void {
+    const log = std.log.scoped(.CrashHandler);
     const S = struct {
         var in_handler: bool = false;
     };
     if (S.in_handler) {
-        std.log.info("Crashed inside of crash handler. Hanging indefinitely", .{});
+        log.info("Crashed inside of crash handler. Hanging indefinitely", .{});
         while (true) {}
     }
     S.in_handler = true;
 
-    std.log.info("Crash handler triggered, socket={}", .{crash_socket});
+    log.info("Crash handler triggered, socket={}", .{crash_socket});
 
     const ctx = if (ctx_ptr) |ctx| ctx.* else {
-        std.log.info("Crash handler: no context", .{});
+        log.info("Crash handler: no context", .{});
         while (true) {}
     };
     const dump = CrashDump{
@@ -64,7 +65,7 @@ pub fn handler(exid: c_uint, ctx_ptr: [*c]c.PPCContext) callconv(.c) void {
         .exid = exid,
     };
 
-    std.log.info("Sending crash dump, pc=0x{x}, exid={}", .{ dump.pc, dump.exid });
+    log.info("Sending crash dump, pc=0x{x}, exid={}", .{ dump.pc, dump.exid });
 
     if (crash_socket >= 0) {
         var retries: u32 = 0;
@@ -78,11 +79,12 @@ pub fn handler(exid: c_uint, ctx_ptr: [*c]c.PPCContext) callconv(.c) void {
                 while (i < 100000) : (i += 1) {}
             }
         }
-        std.log.info("Sent {} bytes after {} retries", .{ sent, retries });
+        log.info("Sent {} bytes after {} retries", .{ sent, retries });
         _ = c.net_close(crash_socket);
-        std.log.info("Socket closed", .{});
+        log.info("Socket closed", .{});
     } else {
-        std.log.info("Invalid socket, not sending", .{});
+        log.info("Invalid socket, not sending", .{});
     }
-    while (true) {}
+
+    c.SYS_ResetSystem(c.SYS_RETURNTOMENU, 0, 0);
 }
