@@ -36,6 +36,10 @@ fn entry() !void {
 }
 
 export fn main() c_int {
+    crash.stack_top = asm volatile ("mr %[out], 1"
+        : [out] "=r" (-> u32),
+    );
+    crash.stack_top = (crash.stack_top + 0xFFF) & ~@as(u32, 0xFFF);
     init() catch |err| {
         std.log.err("{}", .{err});
     };

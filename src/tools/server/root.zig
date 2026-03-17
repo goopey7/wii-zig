@@ -1,5 +1,37 @@
 const std = @import("std");
 
+pub const Exid = enum(u32) {
+    Reset = 1,
+    Mchk = 2,
+    Dsi = 3,
+    ISI = 4,
+    IRQ = 5,
+    ALIGN = 6,
+    UNDEF = 7,
+    FPU = 8,
+    DECR = 9,
+    SYSCALL = 12,
+    TRACE = 13,
+    PM = 15,
+    BKPT = 19,
+};
+
+pub const CrashDump = struct {
+    exid: Exid,
+    pc: u32, // program counter (address of where we crashed)
+    lr: u32, // link register (where execution would go when the current function returns)
+    ctr: u32, // count register (loop counters)
+    cr: u32, // condition register (results of comparisons)
+    xer: u32, // fixed point exception register. (integer overflow, carry bits)
+    msr: u32, // machine state register at the time of exception.
+    gpr: [32]u32, // general purpose registers r0-r31
+    fpr: [32]u64, // floating point registers f0-f31
+    fpscr: u64, // floating point equivalent of xer
+    gqr: [8]u32, // graphics quantization registers
+    ps: [32]u64, // paired singles (wii specific)
+    stack_len: u32, // needed to signal TCP receiver how much data to read
+};
+
 pub fn runCrashReceiver() !void {
     const log = std.log.scoped(.CrashReceiver);
     const port = 9000;
@@ -19,25 +51,59 @@ pub fn runCrashReceiver() !void {
 
         log.debug("Client connected!", .{});
 
-        var buf: [1024]u8 = undefined;
+        var header_buf: [@sizeOf(CrashDump)]u8 = undefined;
         var total_read: usize = 0;
-
-        while (total_read < 8) {
-            const bytes_read = try conn.stream.read(buf[total_read..]);
-            log.debug("Read {} bytes", .{bytes_read});
-            if (bytes_read == 0) break;
-            total_read += bytes_read;
+        while (total_read < @sizeOf(CrashDump)) {
+            const n = try conn.stream.read(header_buf[total_read..]);
+            if (n == 0) break;
+            total_read += n;
         }
 
-        log.debug("Total read: {}", .{total_read});
-
-        if (total_read > 0) {
-            const timestamp = std.time.timestamp();
-            const filename = try std.fmt.allocPrint(std.heap.page_allocator, "crash_{d}.bin", .{timestamp});
-
-            try std.fs.cwd().writeFile(.{ .sub_path = filename, .data = buf[0..total_read] });
-            log.debug("Crash dump saved to {s}", .{filename});
+        if (total_read < @sizeOf(CrashDump)) {
+            log.warn("Incomplete header: got {} of {} bytes, discarding", .{
+                total_read, @sizeOf(CrashDump),
+            });
+            continue;
         }
+        // --- Peek at stack_len from the header (big-endian u32 at known offset) ---
+        // stack_len is the last field before the stack data
+        const dump_header: *const CrashDump = @ptrCast(@alignCast(&header_buf));
+        const stack_len = std.mem.bigToNative(u32, dump_header.stack_len);
+        log.debug("Header received, stack_len={}", .{stack_len});
+
+        // --- Read stack data ---
+        const max_stack = 64 * 1024; // sanity cap: 64KB
+        const clamped_stack_len = @min(stack_len, max_stack);
+        var stack_buf = try std.heap.page_allocator.alloc(u8, clamped_stack_len);
+        defer std.heap.page_allocator.free(stack_buf);
+
+        var stack_read: usize = 0;
+        while (stack_read < clamped_stack_len) {
+            const n = try conn.stream.read(stack_buf[stack_read..]);
+            if (n == 0) break;
+            stack_read += n;
+        }
+        log.debug("Stack received: {} of {} bytes", .{ stack_read, clamped_stack_len });
+
+        // --- Write header + stack as one contiguous .bin ---
+        const timestamp = std.time.timestamp();
+        const filename = try std.fmt.allocPrint(
+            std.heap.page_allocator,
+            "crash_{d}.bin",
+            .{timestamp},
+        );
+        defer std.heap.page_allocator.free(filename);
+
+        const file = try std.fs.cwd().createFile(filename, .{});
+        defer file.close();
+        try file.writeAll(&header_buf);
+        try file.writeAll(stack_buf[0..stack_read]);
+
+        log.info("Crash dump saved to {s} ({} header + {} stack bytes)", .{
+            filename,
+            @sizeOf(CrashDump),
+            stack_read,
+        });
     }
 }
 
