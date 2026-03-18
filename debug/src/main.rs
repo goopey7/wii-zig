@@ -1,0 +1,16 @@
+mod dump;
+mod report;
+
+use anyhow::Result;
+
+fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() != 3 {
+        eprintln!("Usage: {} <dump.bin> <game.elf>", args[0].as_str());
+        std::process::exit(1);
+    }
+
+    let dump = dump::CrashDump::from_file(&args[1])?;
+    report::print_report(&dump);
+    Ok(())
+}

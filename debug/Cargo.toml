@@ -1,0 +1,9 @@
+[package]
+name = "debug"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+addr2line = "0.26.0"
+anyhow = "1.0.102"
+object = "0.38.1"
