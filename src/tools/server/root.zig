@@ -1,5 +1,10 @@
 const std = @import("std");
 
+const magic_markers = @as(u32, 0xDEADC0DE);
+const max_scan_size = 4096;
+const max_stack_size = 64 * 1024;
+const max_receive_size = 65536;
+
 pub const Exid = enum(u32) {
     Reset = 1,
     Mchk = 2,
@@ -51,41 +56,76 @@ pub fn runCrashReceiver() !void {
 
         log.debug("Client connected!", .{});
 
-        var header_buf: [@sizeOf(CrashDump)]u8 = undefined;
-        var total_read: usize = 0;
-        while (total_read < @sizeOf(CrashDump)) {
-            const n = try conn.stream.read(header_buf[total_read..]);
+        var tmp_buf: [max_scan_size]u8 = undefined;
+        var tmp_read: usize = 0;
+        var magic_pos: usize = 0;
+        var found_magic = false;
+
+        while (!found_magic) {
+            const n = try conn.stream.read(tmp_buf[tmp_read..]);
+            if (n == 0) {
+                log.warn("Connection closed while scanning for magic", .{});
+                break;
+            }
+            tmp_read += n;
+
+            while (magic_pos + 4 <= tmp_read) {
+                const val = std.mem.readInt(u32, tmp_buf[magic_pos..][0..4], .big);
+                if (val == magic_markers) {
+                    found_magic = true;
+                    if (magic_pos > 0) {
+                        log.warn("Skipped {} bytes before magic", .{magic_pos});
+                    }
+                    break;
+                }
+                magic_pos += 1;
+            }
+
+            if (tmp_read > max_scan_size and !found_magic) {
+                log.warn("No magic header found in first {} bytes", .{tmp_read});
+                break;
+            }
+        }
+
+        if (!found_magic) {
+            log.warn("Failed to find magic header", .{});
+            continue;
+        }
+
+        const header_size = @sizeOf(CrashDump);
+        const header_start = magic_pos + 4;
+
+        const needed_for_header = header_start + header_size;
+        if (tmp_read < needed_for_header) {
+            const more_needed = needed_for_header - tmp_read;
+            const n = try conn.stream.read(tmp_buf[tmp_read..][0..more_needed]);
+            tmp_read += n;
+        }
+
+        const stack_len_offset = header_start + header_size - 4;
+        const stack_len = std.mem.readInt(u32, tmp_buf[stack_len_offset..][0..4], .big);
+        const clamped_stack_len = @min(stack_len, max_stack_size);
+
+        const total_expected = 4 + header_size + clamped_stack_len;
+        var all_data = try std.heap.page_allocator.alloc(u8, tmp_read + max_receive_size);
+        defer std.heap.page_allocator.free(all_data);
+
+        const remaining_data_len = tmp_read - magic_pos;
+        @memcpy(all_data[0..remaining_data_len], tmp_buf[magic_pos..][0..remaining_data_len]);
+
+        var total_read = remaining_data_len;
+        while (total_read < total_expected) {
+            const n = conn.stream.read(all_data[total_read..]) catch break;
             if (n == 0) break;
             total_read += n;
         }
 
-        if (total_read < @sizeOf(CrashDump)) {
-            log.warn("Incomplete header: got {} of {} bytes, discarding", .{
-                total_read, @sizeOf(CrashDump),
-            });
-            continue;
-        }
-        // --- Peek at stack_len from the header (big-endian u32 at known offset) ---
-        // stack_len is the last field before the stack data
-        const dump_header: *const CrashDump = @ptrCast(@alignCast(&header_buf));
-        const stack_len = std.mem.bigToNative(u32, dump_header.stack_len);
-        log.debug("Header received, stack_len={}", .{stack_len});
+        const header_skip = magic_pos + 4;
+        const header_data = all_data[header_skip..][0..header_size];
+        const stack_start = header_skip + header_size;
+        const actual_stack_len = @min(clamped_stack_len, total_read - stack_start);
+        const stack_data = all_data[stack_start..][0..actual_stack_len];
 
-        // --- Read stack data ---
-        const max_stack = 64 * 1024; // sanity cap: 64KB
-        const clamped_stack_len = @min(stack_len, max_stack);
-        var stack_buf = try std.heap.page_allocator.alloc(u8, clamped_stack_len);
-        defer std.heap.page_allocator.free(stack_buf);
-
-        var stack_read: usize = 0;
-        while (stack_read < clamped_stack_len) {
-            const n = try conn.stream.read(stack_buf[stack_read..]);
-            if (n == 0) break;
-            stack_read += n;
-        }
-        log.debug("Stack received: {} of {} bytes", .{ stack_read, clamped_stack_len });
-
-        // --- Write header + stack as one contiguous .bin ---
         const timestamp = std.time.timestamp();
         const filename = try std.fmt.allocPrint(
             std.heap.page_allocator,
@@ -96,13 +136,13 @@ pub fn runCrashReceiver() !void {
 
         const file = try std.fs.cwd().createFile(filename, .{});
         defer file.close();
-        try file.writeAll(&header_buf);
-        try file.writeAll(stack_buf[0..stack_read]);
+        try file.writeAll(header_data);
+        try file.writeAll(stack_data);
 
         log.info("Crash dump saved to {s} ({} header + {} stack bytes)", .{
             filename,
             @sizeOf(CrashDump),
-            stack_read,
+            stack_data.len,
         });
     }
 }

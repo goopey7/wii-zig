@@ -8,7 +8,8 @@ pub const CRASH_DUMP_PORT: u16 = 9000;
 pub const CRASH_DUMP_HOST_DOLPHIN = CRASH_DUMP_HOST;
 pub const CRASH_DUMP_PORT_DOLPHIN: u16 = 9000;
 
-const max_stack: u32 = 8 * 1024;
+const max_stack: u32 = 4 * 1024;
+const magic_header: u32 = 0xDEADC0DE;
 
 var crash_socket: c_int = -1;
 var target_addr: c.sockaddr_in = undefined;
@@ -94,41 +95,64 @@ pub fn handler(exid: c_uint, ctx_ptr: [*c]c.PPCContext) callconv(.c) void {
     };
 
     log.info("Sending crash dump, pc=0x{x}, exid={}", .{ ctx.pc, @tagName(exid_enum) });
-    const to_copy = @min(max_stack, stack_top - ctx.gpr[1]);
+    const to_copy: u32 = @min(max_stack, stack_top - ctx.gpr[1]);
     log.info("sp=0x{x} stack_top=0x{x} to_copy={}", .{ ctx.gpr[1], stack_top, to_copy });
 
     const stack_ptr: [*]const u8 = @ptrFromInt(ctx.gpr[1]);
 
-    const dump = CrashDump{
-        .exid = exid_enum,
-        .pc = ctx.pc,
-        .lr = ctx.lr,
-        .ctr = ctx.ctr,
-        .cr = ctx.cr,
-        .fpr = ctx.fpr,
-        .fpscr = ctx.fpscr,
-        .gpr = ctx.gpr,
-        .gqr = ctx.gqr,
-        .msr = ctx.msr,
-        .ps = ctx.ps,
-        .xer = ctx.xer,
-        .stack_len = to_copy,
-    };
-
-    log.info("Sending header...", .{});
     if (crash_socket >= 0) {
-        var buf: [@sizeOf(CrashDump) + 4096]u8 = undefined;
-        @memmove(buf[0..@sizeOf(CrashDump)], std.mem.asBytes(&dump));
-        @memmove(buf[@sizeOf(CrashDump)..@sizeOf(CrashDump) + to_copy], stack_ptr[0..to_copy]);
-        var sent: isize = 0;
-        sent = c.send(crash_socket, &buf, @sizeOf(CrashDump) + to_copy, 0);
+        var buf: [@sizeOf(u32) + @sizeOf(CrashDump) + max_stack]u8 = std.mem.zeroes([@sizeOf(u32) + @sizeOf(CrashDump) + max_stack]u8);
+        @memcpy(buf[0..@sizeOf(u32)], std.mem.asBytes(&magic_header));
+
+        var buf_offset: u32 = @sizeOf(u32);
+        const exid_val: u32 = @intFromEnum(exid_enum);
+        @memcpy(buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&exid_val));
+        buf_offset += @sizeOf(u32);
+
+        @memcpy(buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&ctx.pc));
+        buf_offset += @sizeOf(u32);
+
+        @memcpy(buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&ctx.lr));
+        buf_offset += @sizeOf(u32);
+
+        @memcpy(buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&ctx.ctr));
+        buf_offset += @sizeOf(u32);
+
+        @memcpy(buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&ctx.cr));
+        buf_offset += @sizeOf(u32);
+
+        @memcpy(buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&ctx.xer));
+        buf_offset += @sizeOf(u32);
+
+        @memcpy(buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&ctx.msr));
+        buf_offset += @sizeOf(u32);
+
+        @memcpy(buf[buf_offset .. buf_offset + @sizeOf([32]u32)], std.mem.asBytes(&ctx.gpr));
+        buf_offset += @sizeOf([32]u32);
+
+        @memcpy(buf[buf_offset .. buf_offset + @sizeOf([32]u64)], std.mem.asBytes(&ctx.fpr));
+        buf_offset += @sizeOf([32]u64);
+
+        @memcpy(buf[buf_offset .. buf_offset + @sizeOf(u64)], std.mem.asBytes(&ctx.fpscr));
+        buf_offset += @sizeOf(u64);
+
+        @memcpy(buf[buf_offset .. buf_offset + @sizeOf([8]u32)], std.mem.asBytes(&ctx.gqr));
+        buf_offset += @sizeOf([8]u32);
+
+        @memcpy(buf[buf_offset .. buf_offset + @sizeOf([32]u64)], std.mem.asBytes(&ctx.ps));
+        buf_offset += @sizeOf([32]u64);
+
+        @memcpy(buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&to_copy));
+        buf_offset += @sizeOf(u32);
+
+        @memcpy(buf[buf_offset .. buf_offset + to_copy], stack_ptr[0..to_copy]);
+
+        _ = c.send(crash_socket, &buf, @sizeOf(u32) + @sizeOf(CrashDump) + to_copy, 0);
         {
             var i: u32 = 0;
             while (i < 100000) : (i += 1) {}
         }
-        log.info("Sent {} bytes", .{sent});
         _ = c.net_close(crash_socket);
-        log.info("Socket closed", .{});
     } else {
         log.info("Invalid socket, not sending", .{});
     }
