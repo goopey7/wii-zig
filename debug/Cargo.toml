@@ -6,4 +6,5 @@ edition = "2024"
 [dependencies]
 addr2line = "0.26.0"
 anyhow = "1.0.102"
+gimli = "0.33.0"
 object = "0.38.1"

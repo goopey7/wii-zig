@@ -1,6 +1,6 @@
-use crate::dump::CrashDump;
+use crate::{dump::CrashDump, symbols::{ResolvedFrame, SymbolResolver}, unwind::unwind};
 
-pub fn print_report(dump: &CrashDump) {
+pub fn print_report(dump: &CrashDump, sym: &SymbolResolver) {
     println!(
         "Exception : {} (0x{:05X})",
         dump.exid.name(),
@@ -30,4 +30,25 @@ pub fn print_report(dump: &CrashDump) {
         );
     }
     println!();
+
+    println!("Stack Trace:");
+    let frames = unwind(dump);
+    for (i, &addr) in frames.iter().enumerate() {
+        let resolved = sym.resolve(addr as u64);
+        print_frame(i, &resolved);
+    }
+}
+
+fn print_frame(idx: usize, f: &ResolvedFrame) {
+    let func = f.function.as_deref().unwrap_or("<unknown>");
+    match (&f.file, f.line) {
+        (Some(file), Some(line)) => println!(
+            "  #{:<2}  0x{:08X}  {}  ({}:{})",
+            idx, f.addr, func, file, line
+        ),
+        _ => println!("  #{:<2}  0x{:08X}  {}", idx, f.addr, func),
+    }
+    for inlined in &f.inlined {
+        println!("             (inlined) {}", inlined);
+    }
 }

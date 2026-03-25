@@ -1,5 +1,7 @@
 mod dump;
 mod report;
+mod unwind;
+mod symbols;
 
 use anyhow::Result;
 
@@ -11,6 +13,7 @@ fn main() -> Result<()> {
     }
 
     let dump = dump::CrashDump::from_file(&args[1])?;
-    report::print_report(&dump);
+    let sym = symbols::SymbolResolver::load(&args[2])?;
+    report::print_report(&dump, &sym);
     Ok(())
 }
