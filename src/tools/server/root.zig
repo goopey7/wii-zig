@@ -144,6 +144,18 @@ pub fn runCrashReceiver() !void {
             @sizeOf(CrashDump),
             stack_data.len,
         });
+
+        const result = std.process.Child.run(.{
+            .allocator = std.heap.page_allocator,
+            .argv = &.{ "./debug/target/release/debug", filename, "zig-out/wii-zig.elf" },
+        }) catch |err| {
+            log.err("Failed to run debug: {}", .{err});
+            continue;
+        };
+        log.info("Debug Output:\n{s}", .{result.stdout});
+        if (result.stderr.len > 0) {
+            log.err("Debug stderr: {s}", .{result.stderr});
+        }
     }
 }
 
