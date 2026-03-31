@@ -102,6 +102,21 @@ pub const BumpAllocator = struct {
         return self.arena;
     }
 
+    fn dumpStats(ctx: *anyopaque) void {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+        const log = std.log.scoped(.BumpAllocator);
+        log.info("Allocator stats", .{});
+        log.info("  Capacity:            {} KB", .{self.stats.total_capacity / 1024});
+        log.info("  Used:                {} KB", .{self.stats.current_usage / 1024});
+        log.info("  Peak:                {} KB", .{self.stats.peak_usage / 1024});
+        log.info("  Free:                {} KB", .{(self.stats.total_capacity - self.stats.current_usage) / 1024});
+        log.info("  Largest Free Block:  {} KB", .{(self.stats.total_capacity - self.stats.current_usage) / 1024});
+        log.info("  Allocs:              {}", .{self.stats.alloc_count});
+        log.info("  Frees:               {}", .{self.stats.free_count});
+        log.info("  Failures:            {}", .{self.stats.alloc_failures});
+        log.info("  Fragmentation:       {}", .{self.fragmentation()});
+    }
+
     pub fn interface(self: *Self) common.Interface {
         return .{
             .ptr = self,
@@ -109,6 +124,7 @@ pub const BumpAllocator = struct {
                 .stdInterface = stdInterface,
                 .getStats = getStats,
                 .getArena = getArena,
+                .dumpStats = dumpStats,
             },
         };
     }
@@ -165,19 +181,5 @@ pub const BumpAllocator = struct {
         const total_free_memory = largest_free_block;
 
         return 1.0 - @as(f32, @floatFromInt(largest_free_block)) / @as(f32, @floatFromInt(total_free_memory));
-    }
-
-    pub fn dumpStats(self: *const BumpAllocator) void {
-        const log = std.log.scoped(.BumpAllocator);
-        log.info("Allocator stats", .{});
-        log.info("  Capacity:            {} KB", .{self.stats.total_capacity / 1024});
-        log.info("  Used:                {} KB", .{self.stats.current_usage / 1024});
-        log.info("  Peak:                {} KB", .{self.stats.peak_usage / 1024});
-        log.info("  Free:                {} KB", .{(self.stats.total_capacity - self.stats.current_usage) / 1024});
-        log.info("  Largest Free Block:  {} KB", .{(self.stats.total_capacity - self.stats.current_usage) / 1024});
-        log.info("  Allocs:              {}", .{self.stats.alloc_count});
-        log.info("  Frees:               {}", .{self.stats.free_count});
-        log.info("  Failures:            {}", .{self.stats.alloc_failures});
-        log.info("  Fragmentation:       {}", .{self.fragmentation()});
     }
 };

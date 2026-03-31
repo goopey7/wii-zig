@@ -10,7 +10,7 @@ const BlockHeader = struct {
 
 const MIN_SPLIT_SIZE = @sizeOf(BlockHeader) + @alignOf(BlockHeader) + 16;
 
-pub const GeneralPurposeAllocator = struct {
+pub const FreeListAllocator = struct {
     const Self = @This();
     const Alignment = std.mem.Alignment;
 
@@ -61,7 +61,7 @@ pub const GeneralPurposeAllocator = struct {
         };
     }
 
-    pub fn deinit(self: *GeneralPurposeAllocator) void {
+    pub fn deinit(self: *FreeListAllocator) void {
         switch (self.arena) {
             .MEM_1 => c.SYS_SetArena1Lo(self.start),
             .MEM_2 => c.SYS_SetArena2Lo(self.start),
