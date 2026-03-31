@@ -30,8 +30,6 @@ fn init() !void {
 }
 
 fn entry() !void {
-    const ptr: *volatile u32 = @ptrFromInt(8);
-    ptr.* = 0xDEADC0DE;
     try bench.main();
 }
 

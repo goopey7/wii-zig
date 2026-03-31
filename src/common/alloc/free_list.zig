@@ -91,6 +91,11 @@ pub const FreeListAllocator = struct {
         return self.arena;
     }
 
+    fn dumpStats(ctx: *anyopaque) void {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+        _ = self;
+    }
+
     pub fn interface(self: *Self) common.Interface {
         return .{
             .ptr = self,
@@ -98,6 +103,7 @@ pub const FreeListAllocator = struct {
                 .stdInterface = stdInterface,
                 .getStats = getStats,
                 .getArena = getArena,
+                .dumpStats = dumpStats,
             },
         };
     }
