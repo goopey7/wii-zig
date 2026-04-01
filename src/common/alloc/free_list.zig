@@ -112,6 +112,8 @@ pub const FreeListAllocator = struct {
         _ = ret_addr;
         const self: *Self = @ptrCast(@alignCast(ctx));
 
+        if (len == 0) return null;
+
         var prev: ?*BlockHeader = null;
         var current = self.free_list;
 
@@ -248,3 +250,53 @@ pub const FreeListAllocator = struct {
         return null;
     }
 };
+
+test "full allocator init and deinit" {
+    var allocator = try FreeListAllocator.init(.MEM_2, 1024 * 256);
+    defer allocator.deinit();
+    if (allocator.stats.total_capacity == 0 or allocator.stats.alloc_count != 0) return error.InitFail;
+}
+
+test "basic alloc free" {
+    var allocator = try FreeListAllocator.init(.MEM_2, 1024 * 256);
+    defer allocator.deinit();
+    const alloc = allocator.interface().stdInterface();
+    const ptr = alloc.rawAlloc(64, .@"1", @returnAddress()) orelse return error.AllocFail;
+    if (allocator.stats.alloc_count != 1) return error.AllocCount;
+    if (allocator.stats.current_usage < 64) return error.UsageLow;
+    alloc.rawFree(ptr[0..64], .@"1", @returnAddress());
+    if (allocator.stats.free_count != 1) return error.FreeCount;
+}
+
+test "multiple allocations" {
+    var allocator = try FreeListAllocator.init(.MEM_2, 1024 * 512);
+    defer allocator.deinit();
+    const alloc = allocator.interface().stdInterface();
+    const p1 = alloc.rawAlloc(32, .@"1", @returnAddress()) orelse return error.A1;
+    const p2 = alloc.rawAlloc(64, .@"1", @returnAddress()) orelse return error.A2;
+    const p3 = alloc.rawAlloc(128, .@"1", @returnAddress()) orelse return error.A3;
+    if (allocator.stats.alloc_count != 3) return error.Count3;
+    alloc.rawFree(p1[0..32], .@"1", @returnAddress());
+    alloc.rawFree(p2[0..64], .@"1", @returnAddress());
+    alloc.rawFree(p3[0..128], .@"1", @returnAddress());
+    if (allocator.stats.free_count != 3) return error.Count3Free;
+}
+
+test "reallocate after free" {
+    var allocator = try FreeListAllocator.init(.MEM_2, 1024 * 256);
+    defer allocator.deinit();
+    const alloc = allocator.interface().stdInterface();
+    const p1 = alloc.rawAlloc(64, .@"1", @returnAddress()) orelse return error.A1;
+    alloc.rawFree(p1[0..64], .@"1", @returnAddress());
+    const p2 = alloc.rawAlloc(64, .@"1", @returnAddress()) orelse return error.A2;
+    alloc.rawFree(p2[0..64], .@"1", @returnAddress());
+    if (allocator.stats.alloc_count != 2 or allocator.stats.free_count != 2) return error.Realloc;
+}
+
+test "alignment handling" {
+    var allocator = try FreeListAllocator.init(.MEM_2, 1024 * 256);
+    defer allocator.deinit();
+    const alloc = allocator.interface().stdInterface();
+    const ptr = alloc.rawAlloc(17, .@"8", @returnAddress()) orelse return error.AlignAlloc;
+    if (@intFromPtr(ptr) % 8 != 0) return error.NotAligned;
+}

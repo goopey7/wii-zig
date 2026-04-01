@@ -114,7 +114,6 @@ pub const BumpAllocator = struct {
         log.info("  Allocs:              {}", .{self.stats.alloc_count});
         log.info("  Frees:               {}", .{self.stats.free_count});
         log.info("  Failures:            {}", .{self.stats.alloc_failures});
-        log.info("  Fragmentation:       {}", .{self.fragmentation()});
     }
 
     pub fn interface(self: *Self) common.Interface {
@@ -132,6 +131,8 @@ pub const BumpAllocator = struct {
     fn alloc(ctx: *anyopaque, len: usize, alignment: Alignment, ret_addr: usize) ?[*]u8 {
         _ = ret_addr;
         const self: *Self = @ptrCast(@alignCast(ctx));
+
+        if (len == 0) return null;
 
         var p = @intFromPtr(self.ptr);
         p = std.mem.alignForward(u32, p, alignment.toByteUnits());
@@ -175,11 +176,54 @@ pub const BumpAllocator = struct {
         _ = alignment;
         _ = ret_addr;
     }
-
-    pub fn fragmentation(self: *const BumpAllocator) f32 {
-        const largest_free_block = self.stats.total_capacity - self.stats.current_usage;
-        const total_free_memory = largest_free_block;
-
-        return 1.0 - @as(f32, @floatFromInt(largest_free_block)) / @as(f32, @floatFromInt(total_free_memory));
-    }
 };
+
+test "full allocator init and deinit" {
+    var allocator = try BumpAllocator.init(.MEM_2, 1024 * 256);
+    defer allocator.deinit();
+    if (allocator.stats.total_capacity == 0 or allocator.stats.alloc_count != 0) return error.InitFail;
+}
+
+test "basic alloc" {
+    var allocator = try BumpAllocator.init(.MEM_2, 1024 * 256);
+    defer allocator.deinit();
+    const alloc = allocator.interface().stdInterface();
+    _ = alloc.rawAlloc(64, .@"1", @returnAddress()) orelse return error.AllocFail;
+    if (allocator.stats.alloc_count != 1) return error.AllocCount;
+    if (allocator.stats.current_usage < 64) return error.UsageLow;
+}
+
+test "multiple allocations" {
+    var allocator = try BumpAllocator.init(.MEM_2, 1024 * 512);
+    defer allocator.deinit();
+    const alloc = allocator.interface().stdInterface();
+    _ = alloc.rawAlloc(32, .@"1", @returnAddress()) orelse return error.A1;
+    _ = alloc.rawAlloc(64, .@"1", @returnAddress()) orelse return error.A2;
+    _ = alloc.rawAlloc(128, .@"1", @returnAddress()) orelse return error.A3;
+    if (allocator.stats.alloc_count != 3) return error.Count3;
+}
+
+test "alignment handling" {
+    var allocator = try BumpAllocator.init(.MEM_2, 1024 * 256);
+    defer allocator.deinit();
+    const alloc = allocator.interface().stdInterface();
+    const ptr = alloc.rawAlloc(17, .@"8", @returnAddress()) orelse return error.AlignAlloc;
+    if (@intFromPtr(ptr) % 8 != 0) return error.NotAligned;
+}
+
+test "zero size alloc" {
+    var allocator = try BumpAllocator.init(.MEM_2, 1024 * 256);
+    defer allocator.deinit();
+    const alloc = allocator.interface().stdInterface();
+    const ptr = alloc.rawAlloc(0, .@"1", @returnAddress());
+    if (ptr != null or allocator.stats.alloc_count != 0) return error.ZeroAlloc;
+}
+
+test "out of memory" {
+    var allocator = try BumpAllocator.init(.MEM_2, 256);
+    defer allocator.deinit();
+    const alloc = allocator.interface().stdInterface();
+    const result = alloc.rawAlloc(1024 * 200, .@"1", @returnAddress());
+    if (result != null) return error.ShouldFail;
+    if (allocator.stats.alloc_failures == 0) return error.NoFail;
+}

@@ -524,11 +524,11 @@ test "multiple allocations" {
     const p1 = alloc.rawAlloc(32, .@"1", @returnAddress()) orelse return error.A1;
     const p2 = alloc.rawAlloc(64, .@"1", @returnAddress()) orelse return error.A2;
     const p3 = alloc.rawAlloc(128, .@"1", @returnAddress()) orelse return error.A3;
-    if (tlsf.stats.alloc_count != 3) return error.Cnt3;
+    if (allocator.stats.alloc_count != 3) return error.Count3;
     alloc.rawFree(p1[0..32], .@"1", @returnAddress());
     alloc.rawFree(p2[0..64], .@"1", @returnAddress());
     alloc.rawFree(p3[0..128], .@"1", @returnAddress());
-    if (tlsf.stats.free_count != 3) return error.Cnt3Free;
+    if (allocator.stats.free_count != 3) return error.Count3Free;
 }
 
 test "reallocate after free" {
@@ -578,6 +578,17 @@ test "sentinel block handling" {
     if (tlsf.stats.current_usage == 0) return error.SentinelNoUsage;
 }
 
+test "tlsf small remainder after alloc" {
+    var allocator = try TlsfAllocator.init(.MEM_2, 4096);
+    defer allocator.deinit();
+    const alloc = allocator.interface().stdInterface();
+
+    _ = alloc.rawAlloc(256, .@"1", @returnAddress()) orelse return error.A1;
+
+    const p2 = alloc.rawAlloc(3584, .@"1", @returnAddress());
+    if (p2 == null and allocator.stats.alloc_failures == 0) return error.ShouldFail;
+}
+
 test "block split linking" {
     var tlsf = try TlsfAllocator.init(.MEM_2, 1024 * 256);
     defer tlsf.deinit();
@@ -618,7 +629,6 @@ test "double remove safety" {
     defer tlsf.deinit();
     const alloc = tlsf.interface().stdInterface();
     const ptr = alloc.rawAlloc(64, .@"1", @returnAddress()) orelse return error.DoubleAlloc;
-    _ = blockFromPtr(ptr);
     alloc.rawFree(ptr[0..64], .@"1", @returnAddress());
 }
 
@@ -666,10 +676,10 @@ test "alloc exact size no split" {
     defer tlsf.deinit();
     const alloc = tlsf.interface().stdInterface();
     const before = tlsf.stats.current_usage;
-    const ptr = alloc.rawAlloc(BLOCK_SIZE_MIN, .@"1", @returnAddress()) orelse return error.ExactAlloc;
+    const ptr = alloc.rawAlloc(MIN_ALLOC_SIZE, .@"1", @returnAddress()) orelse return error.ExactAlloc;
     const after = tlsf.stats.current_usage;
     if (after <= before) return error.ExactNoChange;
-    alloc.rawFree(ptr[0..BLOCK_SIZE_MIN], .@"1", @returnAddress());
+    alloc.rawFree(ptr[0..MIN_ALLOC_SIZE], .@"1", @returnAddress());
 }
 
 test "split then merge cycle" {
@@ -692,4 +702,14 @@ test "random alloc free pattern" {
     alloc.rawFree(p1[0..32], .@"1", @returnAddress());
     alloc.rawFree(p2[0..48], .@"1", @returnAddress());
     if (tlsf.stats.alloc_count != 2 or tlsf.stats.free_count != 2) return error.RandCount;
+}
+
+test "tlsf with capacity parameter" {
+    const capacity: usize = 8192;
+    var allocator = try TlsfAllocator.init(.MEM_2, capacity);
+    defer allocator.deinit();
+    if (allocator.stats.total_capacity != capacity) return error.Capacity;
+    const alloc = allocator.interface().stdInterface();
+    _ = alloc.rawAlloc(1024, .@"1", @returnAddress()) orelse return error.Alloc;
+    if (allocator.stats.current_usage != 1024) return error.Usage;
 }
