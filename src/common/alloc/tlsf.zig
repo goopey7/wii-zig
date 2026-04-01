@@ -19,17 +19,16 @@ pub const BLOCK_SIZE_MIN = @sizeOf(BlockHeader) - @sizeOf(*BlockHeader);
 pub const BLOCK_SIZE_MAX: usize = 1 << FL_INDEX_MAX;
 
 pub const BlockHeader = struct {
-    prev_phys_block: *BlockHeader,
+    prev_block: *BlockHeader,
     size: usize,
-    next_free: *BlockHeader,
-    prev_free: *BlockHeader,
+    next_free: ?*BlockHeader,
+    prev_free: ?*BlockHeader,
 };
 
 pub const Control = struct {
-    block_null: BlockHeader,
     fl_bitmap: u32,
     sl_bitmap: [FL_INDEX_COUNT]u32,
-    blocks: [FL_INDEX_COUNT][SL_INDEX_COUNT]*BlockHeader,
+    blocks: [FL_INDEX_COUNT][SL_INDEX_COUNT]?*BlockHeader,
 };
 
 pub inline fn blockSize(block: *BlockHeader) usize {
@@ -71,7 +70,7 @@ inline fn blockNextPtr(block: *BlockHeader) [*]u8 {
 }
 
 inline fn blockPrev(block: *BlockHeader) *BlockHeader {
-    return block.prev_phys_block;
+    return block.prev_block;
 }
 
 pub fn find_lsb(word: u32) i32 {
@@ -127,10 +126,19 @@ fn searchSuitableBlock(ctrl: *Control, fli: *i32, sli: *i32) ?*BlockHeader {
 }
 
 fn insertFreeBlock(ctrl: *Control, block: *BlockHeader, fl: i32, sl: i32) void {
-    const current = ctrl.blocks[@intCast(fl)][@intCast(sl)];
-    block.next_free = current;
-    block.prev_free = &ctrl.block_null;
-    current.prev_free = block;
+    if (ctrl.blocks[@intCast(fl)][@intCast(sl)]) |current| {
+        block.next_free = current;
+        block.prev_free = current.prev_free;
+        if (current.prev_free) |p| {
+            p.next_free = block;
+        } else {
+            block.next_free = block;
+        }
+        current.prev_free = block;
+    } else {
+        block.next_free = null;
+        block.prev_free = null;
+    }
     ctrl.blocks[@intCast(fl)][@intCast(sl)] = block;
     ctrl.fl_bitmap |= @as(u32, 1) << @intCast(fl);
     ctrl.sl_bitmap[@intCast(fl)] |= @as(u32, 1) << @intCast(sl);
@@ -140,29 +148,36 @@ fn removeFreeBlock(ctrl: *Control, block: *BlockHeader, fl: i32, sl: i32) void {
     const prev = block.prev_free;
     const next = block.next_free;
 
-    if (@intFromPtr(prev) == @intFromPtr(block) or @intFromPtr(next) == @intFromPtr(block)) {
-        return;
-    }
+    const is_single = (prev == null and next == null);
 
-    prev.next_free = next;
-    next.prev_free = prev;
-
-    if (ctrl.blocks[@intCast(fl)][@intCast(sl)] == block) {
+    if (is_single) {
+        ctrl.blocks[@intCast(fl)][@intCast(sl)] = null;
+    } else if (prev == null) {
+        next.?.prev_free = null;
         ctrl.blocks[@intCast(fl)][@intCast(sl)] = next;
-        if (next == &ctrl.block_null) {
-            ctrl.sl_bitmap[@intCast(fl)] &= ~(@as(u32, 1) << @intCast(sl));
-            if (ctrl.sl_bitmap[@intCast(fl)] == 0) {
-                ctrl.fl_bitmap &= ~(@as(u32, 1) << @intCast(fl));
-            }
+    } else if (next == null) {
+        prev.?.next_free = null;
+    } else {
+        prev.?.next_free = next;
+        next.?.prev_free = prev;
+        if (ctrl.blocks[@intCast(fl)][@intCast(sl)] == block) {
+            ctrl.blocks[@intCast(fl)][@intCast(sl)] = next;
         }
     }
-    block.prev_free = block;
-    block.next_free = block;
+
+    if (ctrl.blocks[@intCast(fl)][@intCast(sl)] == null) {
+        ctrl.sl_bitmap[@intCast(fl)] &= ~(@as(u32, 1) << @intCast(sl));
+        if (ctrl.sl_bitmap[@intCast(fl)] == 0) {
+            ctrl.fl_bitmap &= ~(@as(u32, 1) << @intCast(fl));
+        }
+    }
+    block.prev_free = null;
+    block.next_free = null;
 }
 
 fn blockInsert(ctrl: *Control, block: *BlockHeader) void {
-    block.next_free = block;
-    block.prev_free = block;
+    block.next_free = null;
+    block.prev_free = null;
     var fl: i32 = 0;
     var sl: i32 = 0;
     mappingInsert(blockSize(block), &fl, &sl);
@@ -188,11 +203,11 @@ fn blockSplit(block: *BlockHeader, size: usize) ?*BlockHeader {
     const remaining_addr: usize = @intFromPtr(base) + size - BLOCK_HEADER_OVERHEAD;
     const remaining: *BlockHeader = @ptrFromInt(remaining_addr);
     remaining.size = remain | BLOCK_HEADER_FREE_BIT | BLOCK_HEADER_PREV_FREE_BIT;
-    remaining.prev_phys_block = block;
+    remaining.prev_block = block;
     block.size = size | (block.size & BLOCK_HEADER_FREE_BIT);
 
     const after_remaining = blockNext(remaining);
-    after_remaining.prev_phys_block = remaining;
+    after_remaining.prev_block = remaining;
 
     return remaining;
 }
@@ -210,10 +225,10 @@ fn blockMerge(ctrl: *Control, block: *BlockHeader) *BlockHeader {
         blockRemove(ctrl, next);
         merged.size += blockSize(next) + BLOCK_HEADER_OVERHEAD;
     }
-    merged.prev_phys_block = blockPrev(merged);
+    merged.prev_block = blockPrev(merged);
     const after = blockNext(merged);
     if (blockSize(after) > 0) {
-        after.prev_phys_block = merged;
+        after.prev_block = merged;
     }
     return merged;
 }
@@ -255,26 +270,24 @@ pub const TlsfAllocator = struct {
         const lo_addr: usize = @intFromPtr(lo);
         const ctrl_ptr: *anyopaque = @ptrFromInt(lo_addr);
         const ctrl: *Control = @ptrCast(@alignCast(ctrl_ptr));
-        ctrl.block_null.next_free = &ctrl.block_null;
-        ctrl.block_null.prev_free = &ctrl.block_null;
         ctrl.fl_bitmap = 0;
         var si: usize = 0;
         while (si < FL_INDEX_COUNT) : (si += 1) {
             ctrl.sl_bitmap[si] = 0;
             var sj: usize = 0;
             while (sj < SL_INDEX_COUNT) : (sj += 1) {
-                ctrl.blocks[si][sj] = &ctrl.block_null;
+                ctrl.blocks[si][sj] = null;
             }
         }
 
         const first: *BlockHeader = @ptrCast(@alignCast(pool_ptr - BLOCK_HEADER_OVERHEAD));
         first.size = pool_bytes | BLOCK_HEADER_FREE_BIT;
-        first.prev_phys_block = first;
+        first.prev_block = first;
         blockInsert(ctrl, first);
 
         const sentinel = blockNext(first);
         sentinel.size = 0;
-        sentinel.prev_phys_block = first;
+        sentinel.prev_block = first;
 
         return .{
             .arena = arena,
@@ -574,7 +587,7 @@ test "block split linking" {
     if (blockSize(blk) == 0) return error.SplitBlkSizeZero;
     const next = blockNext(blk);
     if (blockSize(next) == 0) return error.SplitNextIsSentinel;
-    if (next.prev_phys_block != blk) return error.SplitLinkBad;
+    if (next.prev_block != blk) return error.SplitLinkBad;
     alloc.rawFree(ptr[0..32], .@"1", @returnAddress());
 }
 
