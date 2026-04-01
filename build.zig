@@ -204,6 +204,17 @@ pub fn build(b: *std.Build) !void {
                             run.step.dependOn(&unit_tests.step);
                             run.step.dependOn(&install_elf.step);
                             run.step.dependOn(&install_dol.step);
+
+                            const test_junit_step = b.step("test-junit", "Run tests and generate JUnit XML");
+                            const run_junit = b.addSystemCommand(&.{ "sh", "-c", "dolphin-emu-nogui -p headless zig-out/test.dol 2>zig-out/test-output.log" });
+                            test_junit_step.dependOn(&run_junit.step);
+                            run_junit.step.dependOn(&unit_tests.step);
+                            run_junit.step.dependOn(&install_elf.step);
+                            run_junit.step.dependOn(&install_dol.step);
+
+                            const junit_convert = b.addSystemCommand(&.{ "zig", "run", "src/tools/junit_convert/main.zig", "--", "zig-out/test-output.log", "zig-out/test-results.xml" });
+                            test_junit_step.dependOn(&junit_convert.step);
+                            junit_convert.step.dependOn(&run_junit.step);
                         },
                         else => {
                             @compileError("too many objects!");

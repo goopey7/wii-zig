@@ -1,0 +1,24 @@
+image:
+    name: registry.samcollier.dev/samcollier/wii-zig
+
+stages:
+  - build
+  - test
+
+build_wii_ppc:
+  stage: build
+  script:
+    - zig build
+  artifacts:
+    when: always
+    paths:
+      - ./zig-out/*
+
+test_wii_ppc:
+  stage: test
+  script:
+    - zig build test-junit
+  artifacts:
+    when: always
+    reports:
+      junit: zig-out/test-results.xml
