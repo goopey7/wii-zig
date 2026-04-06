@@ -16,15 +16,41 @@ pub fn main() !void {
     std.log.info("Benchmark starting", .{});
     const config = BenchmarkConfig{};
 
-    var bench_alloc = try allocator.BumpAllocator.init(.MEM_1, 1024 * 6000);
+    var bench_alloc = try allocator.BumpAllocator.init(.MEM_1, 1024 * 15000);
     var reporter = try ResultsReporter.init(bench_alloc.interface().stdInterface(), 100);
     defer reporter.deinit();
 
+    std.log.info("Warming up ({} iterations)...", .{config.warmup_iterations});
+    for (0..config.warmup_iterations) |_| {
+        var tlsf = try allocator.TlsfAllocator.init(.MEM_1, null);
+        _ = try workloads.FrameBasedWorkload.run(.per_allocation, config, tlsf.interface(), bench_alloc.interface().stdInterface());
+        tlsf.deinit();
+
+        var fl = try allocator.FreeListAllocator.init(.MEM_1, null);
+        _ = try workloads.FrameBasedWorkload.run(.per_allocation, config, fl.interface(), bench_alloc.interface().stdInterface());
+        fl.deinit();
+
+        var bump = try allocator.BumpAllocator.init(.MEM_1, null);
+        _ = try workloads.FrameBasedWorkload.run(.per_allocation, config, bump.interface(), bench_alloc.interface().stdInterface());
+        bump.deinit();
+    }
+
+    std.log.info("Running {} measured iterations...", .{config.iterations});
     for (0..config.iterations) |_| {
-        var gpa = try allocator.TlsfAllocator.init(.MEM_1, null);
-        defer gpa.deinit();
-        const result = try workloads.FrameBasedWorkload.run(.per_allocation, config, gpa.interface(), bench_alloc.interface().stdInterface());
-        try reporter.addResult("tlsf", result);
+        var tlsf = try allocator.TlsfAllocator.init(.MEM_1, null);
+        const tlsf_result = try workloads.FrameBasedWorkload.run(.per_allocation, config, tlsf.interface(), bench_alloc.interface().stdInterface());
+        tlsf.deinit();
+        try reporter.addResult("tlsf", tlsf_result);
+
+        var fl = try allocator.FreeListAllocator.init(.MEM_1, null);
+        const fl_result = try workloads.FrameBasedWorkload.run(.per_allocation, config, fl.interface(), bench_alloc.interface().stdInterface());
+        fl.deinit();
+        try reporter.addResult("free_list", fl_result);
+
+        var bump = try allocator.BumpAllocator.init(.MEM_1, null);
+        const bump_result = try workloads.FrameBasedWorkload.run(.per_allocation, config, bump.interface(), bench_alloc.interface().stdInterface());
+        bump.deinit();
+        try reporter.addResult("bump", bump_result);
     }
 
     std.log.info("Benchmark complete", .{});

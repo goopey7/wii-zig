@@ -83,17 +83,20 @@ pub const FreeListAllocator = struct {
 
     fn getStats(ctx: *anyopaque) common.Stats {
         const self: *Self = @ptrCast(@alignCast(ctx));
-        return self.stats;
+        var s = self.stats;
+        var largest: usize = 0;
+        var curr = self.free_list;
+        while (curr) |block| {
+            if (block.size > largest) largest = block.size;
+            curr = block.next;
+        }
+        s.largest_free_block = largest;
+        return s;
     }
 
     fn getArena(ctx: *anyopaque) common.Arena {
         const self: *Self = @ptrCast(@alignCast(ctx));
         return self.arena;
-    }
-
-    fn dumpStats(ctx: *anyopaque) void {
-        const self: *Self = @ptrCast(@alignCast(ctx));
-        _ = self;
     }
 
     pub fn interface(self: *Self) common.Interface {
@@ -103,7 +106,6 @@ pub const FreeListAllocator = struct {
                 .stdInterface = stdInterface,
                 .getStats = getStats,
                 .getArena = getArena,
-                .dumpStats = dumpStats,
             },
         };
     }

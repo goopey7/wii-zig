@@ -102,20 +102,6 @@ pub const BumpAllocator = struct {
         return self.arena;
     }
 
-    fn dumpStats(ctx: *anyopaque) void {
-        const self: *Self = @ptrCast(@alignCast(ctx));
-        const log = std.log.scoped(.BumpAllocator);
-        log.info("Allocator stats", .{});
-        log.info("  Capacity:            {} KB", .{self.stats.total_capacity / 1024});
-        log.info("  Used:                {} KB", .{self.stats.current_usage / 1024});
-        log.info("  Peak:                {} KB", .{self.stats.peak_usage / 1024});
-        log.info("  Free:                {} KB", .{(self.stats.total_capacity - self.stats.current_usage) / 1024});
-        log.info("  Largest Free Block:  {} KB", .{(self.stats.total_capacity - self.stats.current_usage) / 1024});
-        log.info("  Allocs:              {}", .{self.stats.alloc_count});
-        log.info("  Frees:               {}", .{self.stats.free_count});
-        log.info("  Failures:            {}", .{self.stats.alloc_failures});
-    }
-
     pub fn interface(self: *Self) common.Interface {
         return .{
             .ptr = self,
@@ -123,7 +109,6 @@ pub const BumpAllocator = struct {
                 .stdInterface = stdInterface,
                 .getStats = getStats,
                 .getArena = getArena,
-                .dumpStats = dumpStats,
             },
         };
     }
@@ -149,6 +134,7 @@ pub const BumpAllocator = struct {
         if (self.stats.current_usage > self.stats.peak_usage) {
             self.stats.peak_usage = self.stats.current_usage;
         }
+        self.stats.largest_free_block = self.stats.total_capacity - self.stats.current_usage;
         return @ptrFromInt(p);
     }
 

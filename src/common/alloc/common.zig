@@ -12,6 +12,7 @@ pub const Stats = struct {
     alloc_count: usize,
     free_count: usize,
     alloc_failures: usize,
+    largest_free_block: usize = 0,
 };
 
 pub const Interface = struct {
@@ -22,7 +23,6 @@ pub const Interface = struct {
         stdInterface: *const fn (*anyopaque) std.mem.Allocator,
         getStats: *const fn (*anyopaque) Stats,
         getArena: *const fn (*anyopaque) Arena,
-        dumpStats: *const fn (*anyopaque) void,
     };
 
     pub inline fn stdInterface(self: *const Interface) std.mem.Allocator {
@@ -35,9 +35,5 @@ pub const Interface = struct {
 
     pub inline fn getArena(self: *const Interface) Arena {
         return self.vtable.getArena(self.ptr);
-    }
-
-    pub inline fn dumpStats(self: *const Interface) void {
-        self.vtable.dumpStats(self.ptr);
     }
 };

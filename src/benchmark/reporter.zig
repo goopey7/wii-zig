@@ -2,7 +2,7 @@ const std = @import("std");
 const WorkloadResult = @import("workloads.zig").WorkloadResult;
 const Arena = @import("common").allocator.Arena;
 
-const CSV_HEADER = "workload_name,id,size,actual_size,alloc_time_ns,free_time_ns,arena\n";
+const CSV_HEADER = "workload_name,id,size,actual_size,alloc_time_ns,free_time_ns,arena,fragmentation\n";
 
 pub const ResultsReporter = struct {
     const NamedResult = struct {
@@ -54,6 +54,7 @@ pub const ResultsReporter = struct {
                 total += intLen(alloc.alloc_time_ns) + 1;
                 total += intLen(alloc.free_time_ns.?) + 1;
                 total += std.enums.tagName(Arena, alloc.arena).?.len + 1;
+                total += 10; // fragmentation score
             }
         }
         return total;
@@ -74,6 +75,9 @@ pub const ResultsReporter = struct {
                 try w.print("{d},", .{alloc.alloc_time_ns});
                 try w.print("{d},", .{alloc.free_time_ns.?});
                 try w.writeAll(std.enums.tagName(Arena, alloc.arena).?);
+                try w.writeByte(',');
+                const score: usize = @intFromFloat(@round(named_result.result.fragmentation_score * 1000000));
+                try w.print("{d}", .{score});
                 try w.writeByte('\n');
             }
         }

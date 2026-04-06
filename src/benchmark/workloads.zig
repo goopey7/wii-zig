@@ -17,6 +17,7 @@ const AllocationRecord = struct {
 
 pub const WorkloadResult = struct {
     final_allocator_stats: allocator.Stats,
+    fragmentation_score: f64,
     allocations: std.ArrayList(AllocationRecord),
 };
 
@@ -27,6 +28,7 @@ pub const FrameBasedWorkload = struct {
 
         var result = WorkloadResult{
             .final_allocator_stats = undefined,
+            .fragmentation_score = 0.0,
             .allocations = try std.ArrayList(AllocationRecord).initCapacity(bench_alloc, 6000),
         };
 
@@ -64,7 +66,11 @@ pub const FrameBasedWorkload = struct {
                 }
             }
         }
-        result.final_allocator_stats = alloc_interface.getStats();
+        const final_stats = alloc_interface.getStats();
+        result.final_allocator_stats = final_stats;
+        if (final_stats.total_capacity > 0) {
+            result.fragmentation_score = 1.0 - @as(f64, @floatFromInt(final_stats.largest_free_block)) / @as(f64, @floatFromInt(final_stats.total_capacity));
+        }
         return result;
     }
 };

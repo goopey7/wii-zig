@@ -294,7 +294,14 @@ pub const TlsfAllocator = struct {
             .ctrl = ctrl,
             .mem_start = pool_ptr,
             .mem_end = new_lo,
-            .stats = .{ .total_capacity = pool_bytes, .alloc_count = 0, .alloc_failures = 0, .current_usage = 0, .free_count = 0, .peak_usage = 0 },
+            .stats = .{
+                .total_capacity = pool_bytes,
+                .alloc_count = 0,
+                .alloc_failures = 0,
+                .current_usage = 0,
+                .free_count = 0,
+                .peak_usage = 0,
+            },
         };
     }
 
@@ -302,13 +309,27 @@ pub const TlsfAllocator = struct {
         if (self.arena == .MEM_1) c.SYS_SetArena1Lo(self.mem_start) else c.SYS_SetArena2Lo(self.mem_start);
     }
 
-    fn stdIfc(ctx: *anyopaque) std.mem.Allocator {
+    fn stdInterface(ctx: *anyopaque) std.mem.Allocator {
         const self: *Self = @ptrCast(@alignCast(ctx));
-        return .{ .ptr = self, .vtable = &.{ .alloc = allocFn, .resize = resizeFn, .remap = remapFn, .free = freeFn } };
+        return .{ .ptr = self, .vtable = &.{
+            .alloc = allocFn,
+            .resize = resizeFn,
+            .remap = remapFn,
+            .free = freeFn,
+        } };
     }
 
     fn getStats(ctx: *anyopaque) common.Stats {
         const self: *Self = @ptrCast(@alignCast(ctx));
+        const fl: usize = @intCast(find_msb(self.ctrl.fl_bitmap));
+        if (fl >= 0) {
+            const sl: usize = @intCast(find_msb(self.ctrl.sl_bitmap[fl]));
+            if (sl >= 0) {
+                if (self.ctrl.blocks[fl][sl]) |block| {
+                    self.stats.largest_free_block = blockSize(block);
+                }
+            }
+        }
         return self.stats;
     }
 
@@ -318,7 +339,11 @@ pub const TlsfAllocator = struct {
     }
 
     pub fn interface(self: *Self) common.Interface {
-        return .{ .ptr = self, .vtable = &.{ .stdInterface = stdIfc, .getStats = getStats, .getArena = getArena, .dumpStats = dumpStats } };
+        return .{ .ptr = self, .vtable = &.{
+            .stdInterface = stdInterface,
+            .getStats = getStats,
+            .getArena = getArena,
+        } };
     }
 
     fn allocFn(ctx: *anyopaque, len: usize, alignment: Alignment, _: usize) ?[*]u8 {
@@ -393,12 +418,6 @@ pub const TlsfAllocator = struct {
 
     fn remapFn(_: *anyopaque, _: []u8, _: Alignment, _: usize, _: usize) ?[*]u8 {
         return null;
-    }
-
-    fn dumpStats(ctx: *anyopaque) void {
-        const self: *Self = @ptrCast(@alignCast(ctx));
-        const log = std.log.scoped(.tlsf);
-        log.info("Capacity: {} KB, Used: {} KB, Peak: {} KB, Allocs: {}, Frees: {}, Failures: {}", .{ self.stats.total_capacity / 1024, self.stats.current_usage / 1024, self.stats.peak_usage / 1024, self.stats.alloc_count, self.stats.free_count, self.stats.alloc_failures });
     }
 };
 
