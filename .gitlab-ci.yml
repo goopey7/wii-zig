@@ -24,6 +24,7 @@ test_wii_ppc:
     - echo "HOME=$HOME"
     - echo "USER=$(whoami)"
     - cat $HOME/.config/dolphin-emu/Dolphin.ini || echo "NO CONFIG FOUND"
+    - df -h /dev/shm
     - dolphin-emu-nogui -v Null -p headless zig-out/wii-zig.dol || true
     - zig build test-junit
   artifacts:
