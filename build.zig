@@ -206,7 +206,7 @@ pub fn build(b: *std.Build) !void {
                             run.step.dependOn(&install_dol.step);
 
                             const test_junit_step = b.step("test-junit", "Run tests and generate JUnit XML");
-                            const run_junit = b.addSystemCommand(&.{ "dolphin-emu-nogui", "-v", "Null", "-p", "headless", "zig-out/test.dol", "2>zig-out/test-output.log" });
+                            const run_junit = b.addSystemCommand(&.{ "bash", "-c", "dolphin-emu-nogui -v Null -p headless zig-out/test.dol 2>zig-out/test-output.log" });
                             test_junit_step.dependOn(&run_junit.step);
                             run_junit.step.dependOn(&unit_tests.step);
                             run_junit.step.dependOn(&install_elf.step);
