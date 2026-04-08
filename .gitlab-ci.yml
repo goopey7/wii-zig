@@ -16,6 +16,9 @@ build_wii_ppc:
 
 test_wii_ppc:
   stage: test
+  needs:
+    - job: build_wii_ppc
+      artifacts: true
   script:
     - zig build test-junit
   artifacts:
