@@ -21,6 +21,9 @@ test_wii_ppc:
     - job: build_wii_ppc
       artifacts: true
   script:
+    - echo "HOME=$HOME"
+    - echo "USER=$(whoami)"
+    - cat $HOME/.config/dolphin-emu/Dolphin.ini || echo "NO CONFIG FOUND"
     - zig build test-junit
   artifacts:
     when: always
