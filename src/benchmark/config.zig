@@ -7,38 +7,16 @@ pub const BenchmarkConfig = struct {
 
     timing_mode: TimingMode = .per_allocation,
 
+    // Frame-based workload
     frame_count: usize = 60,
-    small_allocs_per_frame: usize = 100,
+    allocs_per_frame_range: AllocSizeRange = .{ .min = 20, .max = 150 },
     small_alloc_size_range: AllocSizeRange = .{
         .min = 64,
         .max = 1024,
     },
 
-    resource_sizes: []const usize = &[_]usize{ 4096, 16384, 65536, 262144 },
-    resource_count_per_level: usize = 50,
-
-    allocation_ratio: struct { small: f32, medium: f32, large: f32 } = .{
-        .small = 0.7,
-        .medium = 0.2,
-        .large = 0.1,
-    },
-    object_lifetime_range: struct { min: usize, max: usize } = .{
-        .min = 10,
-        .max = 300,
-    },
-
-    target_utilization: f32 = 0.85,
-    pressure_cycles: usize = 1000,
-
-    enabled_tests: struct {
-        frame_based: bool,
-        resource_load: bool,
-        mixed_workload: bool,
-        memory_pressure: bool,
-    } = .{
-        .frame_based = true,
-        .resource_load = true,
-        .mixed_workload = true,
-        .memory_pressure = true,
-    },
+    // Mixed-lifetime workload
+    mixed_frame_count: usize = 10,
+    object_lifetime_range: AllocSizeRange = .{ .min = 2, .max = 25 },
+    initial_live_objects: usize = 3,
 };
