@@ -47,7 +47,6 @@ pub fn runCrashReceiver() !void {
     log.info("Crash receiver listening on TCP port {}", .{port});
 
     while (true) {
-        log.debug("Waiting for crash connection...", .{});
         const conn = server.accept() catch |err| switch (err) {
             error.ConnectionAborted => break,
             else => return err,
@@ -64,7 +63,11 @@ pub fn runCrashReceiver() !void {
         while (!found_magic) {
             const n = try conn.stream.read(tmp_buf[tmp_read..]);
             if (n == 0) {
-                log.warn("Connection closed while scanning for magic", .{});
+                if (tmp_read == 0) {
+                    log.debug("Connection closed with no data", .{});
+                } else {
+                    log.warn("Connection closed while scanning for magic", .{});
+                }
                 break;
             }
             tmp_read += n;
@@ -88,7 +91,9 @@ pub fn runCrashReceiver() !void {
         }
 
         if (!found_magic) {
-            log.warn("Failed to find magic header", .{});
+            if (tmp_read > 0) {
+                log.warn("Failed to find magic header", .{});
+            }
             continue;
         }
 
