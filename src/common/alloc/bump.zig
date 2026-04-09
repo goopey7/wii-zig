@@ -134,7 +134,9 @@ pub const BumpAllocator = struct {
         if (self.stats.current_usage > self.stats.peak_usage) {
             self.stats.peak_usage = self.stats.current_usage;
         }
-        self.stats.largest_free_block = self.stats.total_capacity - self.stats.current_usage;
+        const remaining = @intFromPtr(self.end) - new_p;
+        self.stats.total_capacity = remaining;
+        self.stats.largest_free_block = remaining;
         return @ptrFromInt(p);
     }
 
