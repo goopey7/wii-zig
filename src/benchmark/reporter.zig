@@ -46,6 +46,7 @@ pub const ResultsReporter = struct {
         total += CSV_HEADER.len;
 
         for (self.results.items) |named_result| {
+            const frag_series = named_result.result.per_frame_fragmentation.items;
             for (named_result.result.allocations.items) |alloc| {
                 total += named_result.name.len + 1;
                 total += intLen(alloc.frame_idx) + 1;
@@ -55,7 +56,10 @@ pub const ResultsReporter = struct {
                 total += intLen(alloc.alloc_time_ns) + 1;
                 total += intLen(alloc.free_time_ns orelse 0) + 1;
                 total += std.enums.tagName(Arena, alloc.arena).?.len + 1;
-                total += 10; // fragmentation score (7 digits + comma + newline)
+                const frag = if (alloc.frame_idx < frag_series.len) frag_series[alloc.frame_idx] else 0.0;
+                const frag_int = @as(u32, @intFromFloat(frag * 1000000.0));
+                // int digits + decimal + decimal digits + newline
+                total += intLen(frag_int / 1000000) + 1 + 6 + 1;
             }
         }
         return total;
@@ -80,8 +84,9 @@ pub const ResultsReporter = struct {
                 try w.writeAll(std.enums.tagName(Arena, alloc.arena).?);
                 try w.writeByte(',');
                 const frag = if (alloc.frame_idx < frag_series.len) frag_series[alloc.frame_idx] else 0.0;
-                const frag_thou = @as(u32, @intFromFloat(frag * 1000000.0));
-                try w.print("{d}.{d:0>6}", .{ frag_thou / 1000000, frag_thou % 1000000 });
+                // can't format floats cuz the standard library tries to use 128 bit float stuff
+                const frag_int = @as(u32, @intFromFloat(frag * 1000000.0));
+                try w.print("{d}.{d:0>6}", .{ frag_int / 1000000, frag_int % 1000000 });
                 try w.writeByte('\n');
             }
         }
