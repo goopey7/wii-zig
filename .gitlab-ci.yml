@@ -13,13 +13,9 @@ build_wii_ppc:
     when: always
     paths:
       - ./zig-out/*
-      - ./.zig-cache/*
 
 test_wii_ppc:
   stage: test
-  needs:
-    - job: build_wii_ppc
-      artifacts: true
   script:
     - df -h /dev/shm
     - zig build test-junit
