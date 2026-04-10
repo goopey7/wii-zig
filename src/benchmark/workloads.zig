@@ -14,11 +14,11 @@ pub const AllocationRecord = struct {
     alloc_time_ns: u64,
     free_time_ns: ?u64,
     arena: Arena,
+    fragmentation: f64,
 };
 
 pub const WorkloadResult = struct {
     final_allocator_stats: allocator.Stats,
-    per_frame_fragmentation: std.ArrayList(f64),
     allocations: std.ArrayList(AllocationRecord),
 };
 
@@ -38,7 +38,6 @@ pub const FrameBasedWorkload = struct {
         const max_allocs = config.frame_count * config.allocs_per_frame_range.max;
         var result = WorkloadResult{
             .final_allocator_stats = undefined,
-            .per_frame_fragmentation = try std.ArrayList(f64).initCapacity(bench_alloc, config.frame_count),
             .allocations = try std.ArrayList(AllocationRecord).initCapacity(bench_alloc, max_allocs),
         };
 
@@ -64,13 +63,11 @@ pub const FrameBasedWorkload = struct {
                         .alloc_time_ns = try alloc_timer.getTimeElapsed(.nanoseconds),
                         .arena = alloc_interface.getArena(),
                         .free_time_ns = null,
+                        .fragmentation = fragScore(alloc_interface.getStats()),
                     });
                     alloc_id += 1;
                 } else |_| {}
             }
-
-            // Sample fragmentation at peak: after allocs, before frees.
-            try result.per_frame_fragmentation.append(bench_alloc, fragScore(alloc_interface.getStats()));
 
             for (frame_start_idx..result.allocations.items.len) |i| {
                 var free_timer = Timer.start();
@@ -103,7 +100,6 @@ pub const MixedLifetimeWorkload = struct {
 
         var result = WorkloadResult{
             .final_allocator_stats = undefined,
-            .per_frame_fragmentation = try std.ArrayList(f64).initCapacity(bench_alloc, config.mixed_frame_count),
             .allocations = try std.ArrayList(AllocationRecord).initCapacity(bench_alloc, max_allocs),
         };
 
@@ -152,13 +148,11 @@ pub const MixedLifetimeWorkload = struct {
                         .alloc_time_ns = try alloc_timer.getTimeElapsed(.nanoseconds),
                         .arena = alloc_interface.getArena(),
                         .free_time_ns = null, // freed in a future frame
+                        .fragmentation = fragScore(alloc_interface.getStats()),
                     });
                     alloc_id += 1;
                 } else |_| {}
             }
-
-            // Sample fragmentation after this frame's allocations.
-            try result.per_frame_fragmentation.append(bench_alloc, fragScore(alloc_interface.getStats()));
         }
 
         // Cleanup remaining live objects (not recorded).
