@@ -23,8 +23,8 @@ pub const WorkloadResult = struct {
 };
 
 fn fragScore(stats: allocator.Stats) f64 {
-    if (stats.total_capacity == 0) return 0.0;
-    return 1.0 - @as(f64, @floatFromInt(stats.largest_free_block)) / @as(f64, @floatFromInt(stats.total_capacity));
+    if (stats.total_free == 0) return 0.0;
+    return 1.0 - @as(f64, @floatFromInt(stats.largest_free_block)) / @as(f64, @floatFromInt(stats.total_free));
 }
 
 /// Simulates a game running at a fixed frame rate.

@@ -137,12 +137,15 @@ pub const TlsfAllocator = struct {
         const self: *Self = @ptrCast(@alignCast(ctx));
         var s = self.stats;
         var largest: usize = 0;
+        var total_free: usize = 0;
         for (self.blocks) |block| {
             if (block) |b| {
                 if (b.size > largest) largest = b.size;
+                total_free += b.size;
             }
         }
         s.largest_free_block = largest;
+        s.total_free = total_free;
         return s;
     }
 

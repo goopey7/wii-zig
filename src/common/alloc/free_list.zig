@@ -85,12 +85,15 @@ pub const FreeListAllocator = struct {
         const self: *Self = @ptrCast(@alignCast(ctx));
         var s = self.stats;
         var largest: usize = 0;
+        var total_free: usize = 0;
         var curr = self.free_list;
         while (curr) |block| {
             if (block.size > largest) largest = block.size;
+            total_free += block.size;
             curr = block.next;
         }
         s.largest_free_block = largest;
+        s.total_free = total_free;
         return s;
     }
 

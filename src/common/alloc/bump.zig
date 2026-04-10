@@ -94,7 +94,11 @@ pub const BumpAllocator = struct {
 
     fn getStats(ctx: *anyopaque) common.Stats {
         const self: *Self = @ptrCast(@alignCast(ctx));
-        return self.stats;
+        var s = self.stats;
+        const remaining = @intFromPtr(self.end) - @intFromPtr(self.ptr);
+        s.largest_free_block = remaining;
+        s.total_free = remaining;
+        return s;
     }
 
     fn getArena(ctx: *anyopaque) common.Arena {

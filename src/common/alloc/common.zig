@@ -13,6 +13,7 @@ pub const Stats = struct {
     free_count: usize,
     alloc_failures: usize,
     largest_free_block: usize = 0,
+    total_free: usize = 0,
 };
 
 pub const Interface = struct {
