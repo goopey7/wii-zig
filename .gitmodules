@@ -1,3 +1,6 @@
 [submodule "dissertation"]
 	path = dissertation
 	url = git@git.samcollier.dev:samcollier/dissertation
+[submodule "tracy"]
+	path = tracy
+	url = git@github.com:goopey7/tracy-wii.git
