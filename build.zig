@@ -17,6 +17,11 @@ pub fn build(b: *std.Build) !void {
 
     const optimize = b.standardOptimizeOption(.{});
 
+    const tracy_enabled = b.option(bool, "tracy", "Enable Tracy profiler") orelse false;
+    const tracy_options = b.addOptions();
+    tracy_options.addOption(bool, "tracy_enabled", tracy_enabled);
+    const tracy_options_mod = tracy_options.createModule();
+
     const server_module = b.createModule(.{
         .root_source_file = b.path("src/tools/server/root.zig"),
         .target = b.graph.host,
@@ -73,6 +78,9 @@ pub fn build(b: *std.Build) !void {
         .link_libc = true,
         .link_libcpp = false,
     });
+
+    common_module.addImport("tracy_options", tracy_options_mod);
+    test_module.addImport("tracy_options", tracy_options_mod);
 
     const unit_tests = b.addTest(.{
         .root_module = test_module,
@@ -145,11 +153,43 @@ pub fn build(b: *std.Build) !void {
         const wiiload_path = wii.path(b.fmt("tools/bin/wiiload{s}", .{ext})).getPath(b);
         const libogc_lib = b.fmt("-L{s}", .{wii.path("libogc/lib/wii").getPath(b)});
 
+        // Compile Tracy client library when profiling is enabled.
+        var tracy_obj: ?std.Build.LazyPath = null;
+        if (tracy_enabled) {
+            const gpp_path = wii.path(b.fmt("devkitPPC/bin/powerpc-eabi-g++{s}", .{ext})).getPath(b);
+            const tracy_compile = b.addSystemCommand(&.{gpp_path});
+            tracy_compile.addArgs(&.{
+                "-DTRACY_ENABLE", "-DTRACY_DELAYED_INIT", "-DTRACY_MANUAL_LIFETIME",
+                "-DTRACY_NO_CALLSTACK", "-DTRACY_NO_CALLSTACK_INLINES",
+                "-DTRACY_NO_BROADCAST", "-DTRACY_ONLY_IPV4",
+                "-DTRACY_BIGENDIAN", "-DTRACY_FIBERS",
+                "-DTRACY_ON_DEMAND",
+                "-DTRACY_TIMER_FALLBACK",
+                "-D__wii__", "-D__Wii__", "-DHW_RVL", "-DGEKKO",
+                "-mrvl", "-mcpu=750", "-meabi", "-mhard-float",
+                "-std=gnu++20", "-Os", "-fno-exceptions", "-fno-rtti", "-c",
+            });
+            tracy_compile.addArg("-I");
+            tracy_compile.addArg(b.path("tracy/public").getPath(b));
+            tracy_compile.addArg("-I");
+            tracy_compile.addArg(wii.path("devkitPPC/powerpc-eabi/include").getPath(b));
+            tracy_compile.addArg("-I");
+            tracy_compile.addArg(wii.path("libogc/include").getPath(b));
+            tracy_compile.addFileArg(b.path("tracy/public/TracyClient.cpp"));
+            tracy_compile.addArg("-o");
+            tracy_obj = tracy_compile.addOutputFileArg("TracyClient.o");
+
+            for (&[_]*std.Build.Module{ common_module, test_module }) |mod| {
+                mod.addIncludePath(b.path("tracy/public"));
+            }
+        }
+
         inline for (objects, 0..) |obj, idx| {
             switch (idx) {
                 0, 1 => {
                     const elf_cmd = b.addSystemCommand(&.{gcc_path});
                     elf_cmd.addFileArg(obj.getEmittedBin());
+                    if (tracy_obj) |to| elf_cmd.addFileArg(to);
                     elf_cmd.addArgs(&.{
                         "-g",
                         "-DGEKKO",
@@ -164,8 +204,9 @@ pub fn build(b: *std.Build) !void {
                         "-lbte",
                         "-logc",
                         "-lm",
-                        "-o",
                     });
+                    if (tracy_enabled) elf_cmd.addArg("-lstdc++");
+                    elf_cmd.addArg("-o");
                     const elf_path = try std.fmt.allocPrint(b.allocator, "{s}.elf", .{obj.name});
                     const dol_path = try std.fmt.allocPrint(b.allocator, "{s}.dol", .{obj.name});
                     const elf_output = elf_cmd.addOutputFileArg(elf_path);
