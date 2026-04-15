@@ -43,7 +43,7 @@ pub const LibcAllocator = struct {
     }
 
     fn getArena(_: *anyopaque) common.Arena {
-        return .Both;
+        return .MEM_1;
     }
 
     pub fn interface(self: *Self) common.Interface {

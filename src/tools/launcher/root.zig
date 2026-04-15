@@ -35,7 +35,6 @@ pub fn main() !void {
 
         var dolphin = std.process.Child.init(&[_][]const u8{
             dolphin_exe,
-            "-p", "headless",
             dolphin_args,
         }, allocator);
         try dolphin.spawn();
