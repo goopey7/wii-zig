@@ -5,6 +5,7 @@ const wpad = @import("platform").wpad;
 const bench = @import("benchmark");
 const crash = @import("platform").crash;
 const platform = @import("platform");
+const tracy = @import("common").tracy;
 
 pub const std_options = std.Options{
     .logFn = log,
@@ -27,10 +28,21 @@ fn init() !void {
     net_log.info("netmask: {}", .{netmask});
     net_log.info("gateway: {}", .{gateway});
     try crash.init();
+    tracy.startup();
 }
 
 fn entry() !void {
-    try bench.main();
+    //platform.crash_scenarios.deep_chain();
+
+    while (c.SYS_MainLoop()) {
+        _ = wpad.WPAD_ScanPads();
+        if ((wpad.WPAD_ButtonsDown(0) & wpad.WPAD_BUTTON_B) > 0) {
+            try bench.main();
+        }
+        else if ((wpad.WPAD_ButtonsDown(0) & wpad.WPAD_BUTTON_HOME) > 0) {
+            c.exit(0);
+        }
+    }
 }
 
 export fn main() c_int {
@@ -53,5 +65,7 @@ export fn main() c_int {
         }
     }
 
+    tracy.shutdown();
+    c.exit(0);
     return 0;
 }
