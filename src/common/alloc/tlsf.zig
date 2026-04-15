@@ -105,6 +105,7 @@ pub const TlsfAllocator = struct {
                 .alloc_count = 0,
                 .free_count = 0,
                 .alloc_failures = 0,
+                .fixed_overhead = @sizeOf([BLOCK_COUNT]?*Block) + @sizeOf(u32) + @sizeOf([BIN_COUNT]u32),
             },
         };
         allocator.blocks = [_]?*Block{null} ** BLOCK_COUNT;
@@ -161,6 +162,7 @@ pub const TlsfAllocator = struct {
                 .stdInterface = stdInterface,
                 .getStats = getStats,
                 .getArena = getArena,
+                .header_size = @sizeOf(Block),
             },
         };
     }
@@ -188,12 +190,18 @@ pub const TlsfAllocator = struct {
         }
 
         if (!block.isFree()) {
+            self.stats.last_alloc_pool_consumption = @sizeOf(Block) + block.size;
+            self.stats.total_header_overhead += @sizeOf(Block);
+            if (self.stats.total_header_overhead > self.stats.peak_header_overhead)
+                self.stats.peak_header_overhead = self.stats.total_header_overhead;
             self.stats.alloc_count += 1;
+            self.stats.live_requested_bytes += len;
             self.stats.current_usage += block.size;
             if (self.stats.current_usage > self.stats.peak_usage) {
                 self.stats.peak_usage = self.stats.current_usage;
             }
-            return @ptrFromInt(block.offset + @sizeOf(Block));
+            const result: [*]u8 = @ptrFromInt(block.offset + @sizeOf(Block));
+            return result;
         } else {
             self.insertFreeBlock(block);
             self.stats.alloc_failures += 1;
@@ -221,6 +229,8 @@ pub const TlsfAllocator = struct {
 
         self.stats.free_count += 1;
         self.stats.current_usage -= memory.len;
+        self.stats.total_header_overhead -= @sizeOf(Block);
+        self.stats.live_requested_bytes -= memory.len;
     }
 
     fn resize(ctx: *anyopaque, memory: []u8, alignment: Alignment, new_len: usize, ret_addr: usize) bool {

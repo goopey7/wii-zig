@@ -109,6 +109,7 @@ pub const FreeListAllocator = struct {
                 .stdInterface = stdInterface,
                 .getStats = getStats,
                 .getArena = getArena,
+                .header_size = @sizeOf(BlockHeader),
             },
         };
     }
@@ -164,12 +165,18 @@ pub const FreeListAllocator = struct {
                 }
                 block.free = false;
                 block.size = total_needed;
+                self.stats.last_alloc_pool_consumption = @sizeOf(BlockHeader) + total_needed;
+                self.stats.total_header_overhead += @sizeOf(BlockHeader);
+                if (self.stats.total_header_overhead > self.stats.peak_header_overhead)
+                    self.stats.peak_header_overhead = self.stats.total_header_overhead;
                 self.stats.alloc_count += 1;
+                self.stats.live_requested_bytes += len;
                 self.stats.current_usage += block.size;
                 if (self.stats.current_usage > self.stats.peak_usage) {
                     self.stats.peak_usage = self.stats.current_usage;
                 }
-                return @ptrFromInt(actual_payload);
+                const result: [*]u8 = @ptrFromInt(actual_payload);
+                return result;
             }
 
             prev = block;
@@ -199,6 +206,8 @@ pub const FreeListAllocator = struct {
         block.free = true;
         self.stats.free_count += 1;
         self.stats.current_usage -= block.size;
+        self.stats.total_header_overhead -= @sizeOf(BlockHeader);
+        self.stats.live_requested_bytes -= memory.len;
 
         var prev: ?*BlockHeader = null;
         var current = self.free_list;

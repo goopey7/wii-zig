@@ -113,6 +113,7 @@ pub const BumpAllocator = struct {
                 .stdInterface = stdInterface,
                 .getStats = getStats,
                 .getArena = getArena,
+                .header_size = 0,
             },
         };
     }
@@ -123,7 +124,8 @@ pub const BumpAllocator = struct {
 
         if (len == 0) return null;
 
-        var p = @intFromPtr(self.ptr);
+        const original_p = @intFromPtr(self.ptr);
+        var p = original_p;
         p = std.mem.alignForward(u32, p, alignment.toByteUnits());
 
         const new_p = p + len;
@@ -133,6 +135,8 @@ pub const BumpAllocator = struct {
         }
 
         self.ptr = @ptrFromInt(new_p);
+        self.stats.last_alloc_pool_consumption = new_p - original_p;
+        self.stats.live_requested_bytes += len;
         self.stats.current_usage += len;
         self.stats.alloc_count += 1;
         if (self.stats.current_usage > self.stats.peak_usage) {
@@ -141,7 +145,8 @@ pub const BumpAllocator = struct {
         const remaining = @intFromPtr(self.end) - new_p;
         self.stats.total_capacity = remaining;
         self.stats.largest_free_block = remaining;
-        return @ptrFromInt(p);
+        const result: [*]u8 = @ptrFromInt(p);
+        return result;
     }
 
     fn resize(ctx: *anyopaque, memory: []u8, alignment: Alignment, new_len: usize, ret_addr: usize) bool {

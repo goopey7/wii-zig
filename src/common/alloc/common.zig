@@ -14,6 +14,11 @@ pub const Stats = struct {
     alloc_failures: usize,
     largest_free_block: usize = 0,
     total_free: usize = 0,
+    last_alloc_pool_consumption: usize = 0,
+    total_header_overhead: usize = 0,
+    peak_header_overhead: usize = 0,
+    fixed_overhead: usize = 0,
+    live_requested_bytes: usize = 0,
 };
 
 pub const Interface = struct {
@@ -24,6 +29,7 @@ pub const Interface = struct {
         stdInterface: *const fn (*anyopaque) std.mem.Allocator,
         getStats: *const fn (*anyopaque) Stats,
         getArena: *const fn (*anyopaque) Arena,
+        header_size: usize,
     };
 
     pub inline fn stdInterface(self: *const Interface) std.mem.Allocator {
@@ -36,5 +42,9 @@ pub const Interface = struct {
 
     pub inline fn getArena(self: *const Interface) Arena {
         return self.vtable.getArena(self.ptr);
+    }
+
+    pub inline fn headerSize(self: *const Interface) usize {
+        return self.vtable.header_size;
     }
 };
