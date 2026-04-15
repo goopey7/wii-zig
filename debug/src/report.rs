@@ -1,35 +1,30 @@
 use crate::{
     dump::CrashDump,
     symbols::{ResolvedFrame, SymbolResolver},
-    unwind::unwind,
+    unwind::unwind as unwind_abi,
+    unwind_dwarf::unwind_dwarf,
 };
 
 const RESET: &str = "\x1b[0m";
 const YELLOW: &str = "\x1b[33m";
-const DIM: &str = "\x1b[2m";
-const BOLD: &str = "\x1b[1m";
 
-pub fn print_report(dump: &CrashDump, sym: &SymbolResolver) {
+pub fn print_report(dump: &CrashDump, sym: &SymbolResolver, elf_data: &[u8]) {
+    println!("exception: {} ({:#x})", dump.exid.name(), dump.exid as u32);
     println!(
-        "{}Exception : {} (0x{:05X}){}",
-        BOLD,
-        dump.exid.name(),
-        dump.exid as u32,
-        RESET
+        "pc={:#010x} lr={:#010x} ctr={:#010x}",
+        dump.pc, dump.lr, dump.ctr
     );
-    println!("{}PC{}        : 0x{:08X}", BOLD, RESET, dump.pc);
-    println!("{}LR{}        : 0x{:08X}", BOLD, RESET, dump.lr);
-    println!("{}CTR{}       : 0x{:08X}", BOLD, RESET, dump.ctr);
-    println!("{}MSR{}       : 0x{:08X}", BOLD, RESET, dump.msr);
-    println!("{}XER{}       : 0x{:08X}", BOLD, RESET, dump.xer);
-    println!("{}CR{}        : 0x{:08X}", BOLD, RESET, dump.cr);
+    println!(
+        "msr={:#010x} xer={:#010x} cr={:#010x}",
+        dump.msr, dump.xer, dump.cr
+    );
     println!();
 
-    println!("{}General Purpose Registers:{}", BOLD, RESET);
+    println!("gprs:");
     for row in 0..8 {
         let i = row * 4;
         println!(
-            "  r{:02}={:08X}  r{:02}={:08X}  r{:02}={:08X}  r{:02}={:08X}",
+            "  r{:02}={:08x}  r{:02}={:08x}  r{:02}={:08x}  r{:02}={:08x}",
             i,
             dump.gpr[i],
             i + 1,
@@ -42,37 +37,45 @@ pub fn print_report(dump: &CrashDump, sym: &SymbolResolver) {
     }
     println!();
 
-    println!("{}Stack Trace:{}", BOLD, RESET);
-    let frames = unwind(dump);
-    for (i, &addr) in frames.iter().enumerate() {
-        let resolved = sym.resolve(addr as u64);
-        print_frame(i, &resolved);
+    println!("stack trace (abi):");
+    let abi_frames = unwind_abi(dump);
+    for (i, &addr) in abi_frames.iter().enumerate() {
+        print_frame(i, &sym.resolve(addr as u64));
     }
+    println!();
+
+    let dwarf_result = unwind_dwarf(dump, elf_data);
+    println!("stack trace (dwarf cfi):");
+
+    if let Some(ref e) = dwarf_result.error {
+        println!("  {}warning: {}{}", YELLOW, e, RESET);
+    }
+    for (i, &addr) in dwarf_result.frames.iter().enumerate() {
+        print_frame(i, &sym.resolve(addr as u64));
+    }
+    println!();
 }
 
 fn print_frame(idx: usize, f: &ResolvedFrame) {
-    let func = f.function.as_deref().unwrap_or("<unknown>");
+    let func = f.function.as_deref().unwrap_or("???");
     match (&f.file, f.line) {
         (Some(file), Some(line)) => println!(
-            "  #{:<2}  0x{:08X}  {}  ({}{}:{}{})",
-            idx, f.addr, func, YELLOW, file, RESET, line
+            "  {} {:#010x}  {}  ({}{}:{}{} )",
+            idx, f.addr, func, YELLOW, file, line, RESET
         ),
-        _ => println!("  #{:<2}  0x{:08X}  {}", idx, f.addr, func),
+        _ => println!("  {} {:#010x}  {}", idx, f.addr, func),
     }
 
-    if !f.source_context.is_empty() {
-        for sl in &f.source_context {
-            let marker = if sl.is_crash_line { ">" } else { " " };
-            let color = if sl.is_crash_line { YELLOW } else { DIM };
-            let line_color = if sl.is_crash_line { YELLOW } else { RESET };
-            println!(
-                "      {}{}{:4}{}  {}{}{}",
-                marker, color, sl.line_num, RESET, line_color, sl.text, RESET
-            );
-        }
+    for sl in &f.source_context {
+        let marker = if sl.is_crash_line { ">" } else { " " };
+        let color = if sl.is_crash_line { YELLOW } else { "" };
+        println!(
+            "      {}{} {:4}  {}{}",
+            marker, color, sl.line_num, sl.text, RESET
+        );
     }
 
     for inlined in &f.inlined {
-        println!("             {}inlined: {}{}", DIM, inlined, RESET);
+        println!("             inlined: {}", inlined);
     }
 }
