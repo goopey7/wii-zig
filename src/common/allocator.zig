@@ -5,4 +5,5 @@ pub const LibcAllocator = @import("alloc/libc.zig").LibcAllocator;
 pub const Arena = @import("alloc/common.zig").Arena;
 pub const Stats = @import("alloc/common.zig").Stats;
 pub const Interface = @import("alloc/common.zig").Interface;
+pub const PanicAllocator = @import("alloc/common.zig").PanicAllocator;
 const std = @import("std");

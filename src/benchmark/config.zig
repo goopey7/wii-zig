@@ -2,7 +2,7 @@ pub const BenchmarkConfig = struct {
     pub const AllocSizeRange = struct { min: usize, max: usize };
     pub const TimingMode = enum { per_allocation, per_frame };
 
-    seeds: []const u64 = &.{ 42, 137, 2025, 8675309 },
+    seeds: []const u64 = &.{ 16298968542734512000, 17398596456881996000, 14998958750263175000, 13956698820748706000 },
     warmup_iterations: usize = 2,
 
     timing_mode: TimingMode = .per_allocation,

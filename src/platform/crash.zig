@@ -3,9 +3,9 @@ const c = @import("platform.zig").c;
 const dolphin = @import("dolphin.zig");
 const std = @import("std");
 
-pub const CRASH_DUMP_HOST = "192.168.0.115";
+pub const CRASH_DUMP_HOST = "192.168.0.107";
 pub const CRASH_DUMP_PORT: u16 = 9000;
-pub const CRASH_DUMP_HOST_DOLPHIN = CRASH_DUMP_HOST;
+pub const CRASH_DUMP_HOST_DOLPHIN = "127.0.0.1";
 pub const CRASH_DUMP_PORT_DOLPHIN: u16 = 9000;
 
 const max_stack: u32 = 4 * 1024;
@@ -30,6 +30,7 @@ pub const Exid = enum(u32) {
     TRACE = 13,
     PM = 15,
     BKPT = 19,
+    ZigPanic = 20,
 };
 
 pub const CrashDump = struct {
@@ -73,6 +74,94 @@ pub fn init() !void {
         crash_socket = -1;
         return error.ConnectionFailed;
     }
+}
+
+pub fn sendPanic(panic_msg: []const u8, error_trace: ?*std.builtin.StackTrace) noreturn {
+    const S = struct {
+        var in_panic: bool = false;
+        var buf: [@sizeOf(u32) + @sizeOf(CrashDump) + max_stack]u8 = undefined;
+    };
+    if (S.in_panic) {
+        while (true) {}
+    }
+    S.in_panic = true;
+
+    // don't use std.log here to avoid extra allocations which might not be possible in an OOM situation
+    _ = std.c.printf("err(CrashHandler): PANIC: %.*s\n", @as(c_int, @intCast(panic_msg.len)), panic_msg.ptr);
+    c.SYS_Report("err(CrashHandler): PANIC: %.*s\n", @as(c_int, @intCast(panic_msg.len)), panic_msg.ptr);
+
+    // get stack ptr and link register
+    const sp = asm volatile ("mr %[out], 1"
+        : [out] "=r" (-> u32),
+    );
+    const lr = asm volatile ("mflr %[out]"
+        : [out] "=r" (-> u32),
+    );
+
+    var pc: u32 = lr;
+    if (error_trace) |trace| {
+        const n = @min(trace.index, trace.instruction_addresses.len);
+        if (n > 0) {
+            pc = @intCast(trace.instruction_addresses[0]);
+        }
+    }
+
+    if (crash_socket >= 0) {
+        const to_copy: u32 = @min(max_stack, stack_top - sp);
+        const stack_ptr: [*]const u8 = @ptrFromInt(sp);
+
+        _ = std.c.printf("err(CrashHandler): Sending crash dump (socket=%d, stack_bytes=%u)\n", crash_socket, to_copy);
+        c.SYS_Report("err(CrashHandler): Sending crash dump\n");
+
+        @memset(&S.buf, 0);
+        @memcpy(S.buf[0..@sizeOf(u32)], std.mem.asBytes(&magic_header));
+
+        var buf_offset: u32 = @sizeOf(u32);
+        const exid_val: u32 = @intFromEnum(Exid.ZigPanic);
+        @memcpy(S.buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&exid_val));
+        buf_offset += @sizeOf(u32);
+
+        @memcpy(S.buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&pc));
+        buf_offset += @sizeOf(u32);
+
+        @memcpy(S.buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&lr));
+        buf_offset += @sizeOf(u32);
+
+        // skip ctr, cr, xer, msr
+        buf_offset += @sizeOf(u32) * 4;
+
+        // gpr[0..32] also zeroed except gpr[1]
+        var gpr = std.mem.zeroes([32]u32);
+        gpr[1] = sp;
+        @memcpy(S.buf[buf_offset .. buf_offset + @sizeOf([32]u32)], std.mem.asBytes(&gpr));
+        buf_offset += @sizeOf([32]u32);
+
+        // fpr, fpscr, gqr, ps also zeroed
+        buf_offset += @sizeOf([32]u64); // fpr
+        buf_offset += @sizeOf(u64); // fpscr
+        buf_offset += @sizeOf([8]u32); // gqr
+        buf_offset += @sizeOf([32]u64); // ps
+
+        @memcpy(S.buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&to_copy));
+        buf_offset += @sizeOf(u32);
+
+        @memcpy(S.buf[buf_offset .. buf_offset + to_copy], stack_ptr[0..to_copy]);
+
+        _ = c.send(crash_socket, &S.buf, @sizeOf(u32) + @sizeOf(CrashDump) + to_copy, 0);
+        _ = std.c.printf("err(CrashHandler): Crash dump sent\n");
+        c.SYS_Report("err(CrashHandler): Crash dump sent\n");
+        {
+            var i: u32 = 0;
+            while (i < 100000) : (i += 1) {}
+        }
+        _ = c.net_close(crash_socket);
+    } else {
+        _ = std.c.printf("err(CrashHandler): No crash socket\n");
+        c.SYS_Report("err(CrashHandler): No crash socket\n");
+    }
+
+    c.SYS_ResetSystem(c.SYS_RETURNTOMENU, 0, 0);
+    unreachable;
 }
 
 pub fn handler(exid: c_uint, ctx_ptr: [*c]c.PPCContext) callconv(.c) void {
@@ -158,4 +247,5 @@ pub fn handler(exid: c_uint, ctx_ptr: [*c]c.PPCContext) callconv(.c) void {
     }
 
     c.SYS_ResetSystem(c.SYS_RETURNTOMENU, 0, 0);
+    unreachable;
 }

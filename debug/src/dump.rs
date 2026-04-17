@@ -17,6 +17,7 @@ pub enum Exid {
     Trace = 13,
     PerformanceMonitor = 15,
     BKPT = 19,
+    ZigPanic = 20,
     Unknown = 0xFFFFFFFF,
 }
 
@@ -36,6 +37,7 @@ impl Exid {
             13 => Self::Trace,
             15 => Self::PerformanceMonitor,
             19 => Self::BKPT,
+            20 => Self::ZigPanic,
             _ => Self::Unknown,
         }
     }
@@ -55,6 +57,7 @@ impl Exid {
             Self::Trace => "Trace",
             Self::PerformanceMonitor => "Performance Monitor",
             Self::BKPT => "IABR",
+            Self::ZigPanic => "Zig Panic",
             Self::Unknown => "Unknown",
         }
     }

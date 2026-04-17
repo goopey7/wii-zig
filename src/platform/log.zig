@@ -35,6 +35,14 @@ pub fn log(
                     arg_index += 1;
                 }
                 i += 2;
+            } else if (i + 1 < format.len and format[i + 1] == 's' and i + 2 < format.len and format[i + 2] == '}') {
+                const fields = args_type_info.@"struct".fields;
+                if (arg_index < fields.len) {
+                    const value = @field(args, fields[arg_index].name);
+                    printValue(value);
+                    arg_index += 1;
+                }
+                i += 2;
             } else if (i + 1 < format.len and format[i + 1] == '}') {
                 const fields = args_type_info.@"struct".fields;
                 if (arg_index < fields.len) {

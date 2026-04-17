@@ -1,5 +1,41 @@
 const std = @import("std");
 
+pub const PanicAllocator = struct {
+    inner: std.mem.Allocator,
+    const Alignment = std.mem.Alignment;
+
+    pub fn allocator(self: *PanicAllocator) std.mem.Allocator {
+        return .{ .ptr = self, .vtable = &vtable };
+    }
+
+    const vtable = std.mem.Allocator.VTable{
+        .alloc = alloc,
+        .resize = resize,
+        .remap = remap,
+        .free = free,
+    };
+
+    fn alloc(ctx: *anyopaque, n: usize, alignment: Alignment, ra: usize) ?[*]u8 {
+        const self: *PanicAllocator = @ptrCast(@alignCast(ctx));
+        return self.inner.rawAlloc(n, alignment, ra) orelse @panic("PanicAllocator OOM");
+    }
+
+    fn resize(ctx: *anyopaque, buf: []u8, alignment: Alignment, new_len: usize, ra: usize) bool {
+        const self: *PanicAllocator = @ptrCast(@alignCast(ctx));
+        return self.inner.rawResize(buf, alignment, new_len, ra);
+    }
+
+    fn remap(ctx: *anyopaque, buf: []u8, alignment: Alignment, new_len: usize, ra: usize) ?[*]u8 {
+        const self: *PanicAllocator = @ptrCast(@alignCast(ctx));
+        return self.inner.rawRemap(buf, alignment, new_len, ra);
+    }
+
+    fn free(ctx: *anyopaque, buf: []u8, alignment: Alignment, ra: usize) void {
+        const self: *PanicAllocator = @ptrCast(@alignCast(ctx));
+        self.inner.rawFree(buf, alignment, ra);
+    }
+};
+
 pub const Arena = enum {
     MEM_1,
     MEM_2,

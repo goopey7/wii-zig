@@ -27,7 +27,9 @@ pub fn main() !void {
 
     // Use MEM_2 for benchmark data so test allocators have all of MEM_1.
     var bench_alloc = try allocator.BumpAllocator.init(.MEM_2, 1024 * 1024 * 20);
-    var reporter = try ResultsReporter.init(bench_alloc.interface().stdInterface(), 100);
+    var panic_bench = allocator.PanicAllocator{ .inner = bench_alloc.interface().stdInterface() };
+    const bench = panic_bench.allocator();
+    var reporter = try ResultsReporter.init(bench, 100);
     defer reporter.deinit();
 
     std.log.info("Warming up ({} iterations)...", .{config.warmup_iterations});
@@ -35,7 +37,7 @@ pub fn main() !void {
         {
             var tlsf = try allocator.TlsfAllocator.init(.MEM_1, null);
             const z = tracy.zoneBegin("wu_tlsf_frame", @src());
-            _ = try workloads.FrameBasedWorkload.run(config, tlsf.interface(), bench_alloc.interface().stdInterface(), 42);
+            _ = try workloads.FrameBasedWorkload.run(config, tlsf.interface(), bench, 42);
             tracy.zoneEnd(z);
             tlsf.deinit();
             tracy.frameMarkFlush();
@@ -43,7 +45,7 @@ pub fn main() !void {
         {
             var fl = try allocator.FreeListAllocator.init(.MEM_1, null);
             const z = tracy.zoneBegin("wu_fl_frame", @src());
-            _ = try workloads.FrameBasedWorkload.run(config, fl.interface(), bench_alloc.interface().stdInterface(), 42);
+            _ = try workloads.FrameBasedWorkload.run(config, fl.interface(), bench, 42);
             tracy.zoneEnd(z);
             fl.deinit();
             tracy.frameMarkFlush();
@@ -51,7 +53,7 @@ pub fn main() !void {
         {
             var bump = try allocator.BumpAllocator.init(.MEM_1, null);
             const z = tracy.zoneBegin("wu_bump_frame", @src());
-            _ = try workloads.FrameBasedWorkload.run(config, bump.interface(), bench_alloc.interface().stdInterface(), 42);
+            _ = try workloads.FrameBasedWorkload.run(config, bump.interface(), bench, 42);
             tracy.zoneEnd(z);
             bump.deinit();
             tracy.frameMarkFlush();
@@ -59,7 +61,7 @@ pub fn main() !void {
         {
             var libc = allocator.LibcAllocator.init();
             const z = tracy.zoneBegin("wu_libc_frame", @src());
-            _ = try workloads.FrameBasedWorkload.run(config, libc.interface(), bench_alloc.interface().stdInterface(), 42);
+            _ = try workloads.FrameBasedWorkload.run(config, libc.interface(), bench, 42);
             tracy.zoneEnd(z);
             libc.deinit();
             tracy.frameMarkFlush();
@@ -67,7 +69,7 @@ pub fn main() !void {
         {
             var tlsf_sw = try allocator.TlsfAllocator.init(.MEM_1, null);
             const z = tracy.zoneBegin("wu_tlsf_stress", @src());
-            _ = try workloads.StressWorkload.run(config, tlsf_sw.interface(), bench_alloc.interface().stdInterface(), 42);
+            _ = try workloads.StressWorkload.run(config, tlsf_sw.interface(), bench, 42);
             tracy.zoneEnd(z);
             tlsf_sw.deinit();
             tracy.frameMarkFlush();
@@ -75,7 +77,7 @@ pub fn main() !void {
         {
             var libc_sw = allocator.LibcAllocator.init();
             const z = tracy.zoneBegin("wu_libc_stress", @src());
-            _ = try workloads.StressWorkload.run(config, libc_sw.interface(), bench_alloc.interface().stdInterface(), 42);
+            _ = try workloads.StressWorkload.run(config, libc_sw.interface(), bench, 42);
             tracy.zoneEnd(z);
             libc_sw.deinit();
             tracy.frameMarkFlush();
@@ -88,100 +90,110 @@ pub fn main() !void {
         const mem1_remaining = @intFromPtr(c.SYS_GetArena1Hi()) - @intFromPtr(c.SYS_GetArena1Lo());
         std.log.info("Seed {}... (remaining benchmark memory: {} B, MEM1 remaining: {} B)", .{ seed, bench_remaining, mem1_remaining });
 
+        std.log.info("tlsf/frame", .{});
         {
             var tlsf = try allocator.TlsfAllocator.init(.MEM_1, null);
             const zone = tracy.zoneBegin("tlsf_frame", @src());
-            const tlsf_frame = try workloads.FrameBasedWorkload.run(config, tlsf.interface(), bench_alloc.interface().stdInterface(), seed);
+            const tlsf_frame = try workloads.FrameBasedWorkload.run(config, tlsf.interface(), bench, seed);
             tracy.zoneEnd(zone);
             tlsf.deinit();
             try reporter.addResult("tlsf_frame", seed, tlsf_frame);
             tracy.frameMarkFlush();
         }
 
+        std.log.info("free_list/frame", .{});
         {
             var fl = try allocator.FreeListAllocator.init(.MEM_1, null);
             const zone = tracy.zoneBegin("free_list_frame", @src());
-            const fl_frame = try workloads.FrameBasedWorkload.run(config, fl.interface(), bench_alloc.interface().stdInterface(), seed);
+            const fl_frame = try workloads.FrameBasedWorkload.run(config, fl.interface(), bench, seed);
             tracy.zoneEnd(zone);
             fl.deinit();
             try reporter.addResult("free_list_frame", seed, fl_frame);
             tracy.frameMarkFlush();
         }
 
+        std.log.info("bump/frame", .{});
         {
             var bump_frame_alloc = try allocator.BumpAllocator.init(.MEM_1, null);
             const zone = tracy.zoneBegin("bump_frame", @src());
-            const bump_frame = try workloads.FrameBasedWorkload.run(config, bump_frame_alloc.interface(), bench_alloc.interface().stdInterface(), seed);
+            const bump_frame = try workloads.FrameBasedWorkload.run(config, bump_frame_alloc.interface(), bench, seed);
             tracy.zoneEnd(zone);
             bump_frame_alloc.deinit();
             try reporter.addResult("bump_frame", seed, bump_frame);
             tracy.frameMarkFlush();
         }
 
+        std.log.info("tlsf/mixed", .{});
         {
             var tlsf_m = try allocator.TlsfAllocator.init(.MEM_1, null);
             const zone = tracy.zoneBegin("tlsf_mixed", @src());
-            const tlsf_mixed = try workloads.MixedLifetimeWorkload.run(config, tlsf_m.interface(), bench_alloc.interface().stdInterface(), seed);
+            const tlsf_mixed = try workloads.MixedLifetimeWorkload.run(config, tlsf_m.interface(), bench, seed);
             tracy.zoneEnd(zone);
             tlsf_m.deinit();
             try reporter.addResult("tlsf_mixed", seed, tlsf_mixed);
             tracy.frameMarkFlush();
         }
 
+        std.log.info("free_list/mixed", .{});
         {
             var fl_m = try allocator.FreeListAllocator.init(.MEM_1, null);
             const zone = tracy.zoneBegin("free_list_mixed", @src());
-            const fl_mixed = try workloads.MixedLifetimeWorkload.run(config, fl_m.interface(), bench_alloc.interface().stdInterface(), seed);
+            const fl_mixed = try workloads.MixedLifetimeWorkload.run(config, fl_m.interface(), bench, seed);
             tracy.zoneEnd(zone);
             fl_m.deinit();
             try reporter.addResult("free_list_mixed", seed, fl_mixed);
             tracy.frameMarkFlush();
         }
 
+        std.log.info("bump/mixed", .{});
         {
             var bump_m = try allocator.BumpAllocator.init(.MEM_1, null);
             const zone = tracy.zoneBegin("bump_mixed", @src());
-            const bump_mixed = try workloads.MixedLifetimeWorkload.run(config, bump_m.interface(), bench_alloc.interface().stdInterface(), seed);
+            const bump_mixed = try workloads.MixedLifetimeWorkload.run(config, bump_m.interface(), bench, seed);
             tracy.zoneEnd(zone);
             bump_m.deinit();
             try reporter.addResult("bump_mixed", seed, bump_mixed);
             tracy.frameMarkFlush();
         }
 
+        std.log.info("libc/frame", .{});
         {
             var libc_frame = allocator.LibcAllocator.init();
             const zone = tracy.zoneBegin("libc_frame", @src());
-            const libc_frame_result = try workloads.FrameBasedWorkload.run(config, libc_frame.interface(), bench_alloc.interface().stdInterface(), seed);
+            const libc_frame_result = try workloads.FrameBasedWorkload.run(config, libc_frame.interface(), bench, seed);
             tracy.zoneEnd(zone);
             libc_frame.deinit();
             try reporter.addResult("libc_frame", seed, libc_frame_result);
             tracy.frameMarkFlush();
         }
 
+        std.log.info("libc/mixed", .{});
         {
             var libc_m = allocator.LibcAllocator.init();
             const zone = tracy.zoneBegin("libc_mixed", @src());
-            const libc_mixed = try workloads.MixedLifetimeWorkload.run(config, libc_m.interface(), bench_alloc.interface().stdInterface(), seed);
+            const libc_mixed = try workloads.MixedLifetimeWorkload.run(config, libc_m.interface(), bench, seed);
             tracy.zoneEnd(zone);
             libc_m.deinit();
             try reporter.addResult("libc_mixed", seed, libc_mixed);
             tracy.frameMarkFlush();
         }
 
+        std.log.info("tlsf/stress", .{});
         {
             var tlsf_s = try allocator.TlsfAllocator.init(.MEM_1, null);
             const zone = tracy.zoneBegin("tlsf_stress", @src());
-            const tlsf_stress = try workloads.StressWorkload.run(config, tlsf_s.interface(), bench_alloc.interface().stdInterface(), seed);
+            const tlsf_stress = try workloads.StressWorkload.run(config, tlsf_s.interface(), bench, seed);
             tracy.zoneEnd(zone);
             tlsf_s.deinit();
             try reporter.addStressResult("tlsf_stress", seed, tlsf_stress);
             tracy.frameMarkFlush();
         }
 
+        std.log.info("libc/stress", .{});
         {
             var libc_s = allocator.LibcAllocator.init();
             const zone = tracy.zoneBegin("libc_stress", @src());
-            const libc_stress = try workloads.StressWorkload.run(config, libc_s.interface(), bench_alloc.interface().stdInterface(), seed);
+            const libc_stress = try workloads.StressWorkload.run(config, libc_s.interface(), bench, seed);
             tracy.zoneEnd(zone);
             libc_s.deinit();
             try reporter.addStressResult("libc_stress", seed, libc_stress);

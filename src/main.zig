@@ -11,6 +11,11 @@ pub const std_options = std.Options{
     .logFn = log,
 };
 
+pub fn panic(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
+    _ = ret_addr;
+    crash.sendPanic(msg, error_return_trace);
+}
+
 fn init() !void {
     c.PPCExcptCurPanicFn = crash.handler;
     c.VIDEO_Init();
@@ -51,11 +56,11 @@ export fn main() c_int {
     );
     crash.stack_top = (crash.stack_top + 0xFFF) & ~@as(u32, 0xFFF);
     init() catch |err| {
-        std.log.err("{}", .{err});
+        @panic(@errorName(err));
     };
 
     entry() catch |err| {
-        std.log.err("{}", .{err});
+        @panic(@errorName(err));
     };
 
     while (c.SYS_MainLoop()) {
