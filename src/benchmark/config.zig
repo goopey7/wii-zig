@@ -16,7 +16,7 @@ pub const BenchmarkConfig = struct {
     },
 
     // Mixed workload
-    mixed_frame_count: usize = 10,
+    mixed_frame_count: usize = 30,
     mixed_alloc_size_range: AllocSizeRange = .{ .min = 16, .max = 4096 },
     object_lifetime_range: AllocSizeRange = .{ .min = 2, .max = 25 },
     initial_live_objects: usize = 3,

@@ -83,6 +83,9 @@ pub fn main() !void {
             tracy.frameMarkFlush();
         }
     }
+    reporter.deinit();
+    bench_alloc.reset();
+    reporter = try ResultsReporter.init(bench, 100);
 
     std.log.info("Running {} seeds...", .{config.seeds.len});
     for (config.seeds) |seed| {
