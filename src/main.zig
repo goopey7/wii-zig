@@ -36,15 +36,41 @@ fn init() !void {
     tracy.startup();
 }
 
+const MenuItem = enum { benchmark, crash, exit };
+
+fn drawMenu(selected: MenuItem) void {
+    _ = c.printf("\x1b[2J\x1b[H");
+    _ = c.printf("\n  === Main Menu ===\n\n");
+    _ = c.printf("%s Run Benchmark\n", if (selected == .benchmark) ">" else " ");
+    _ = c.printf("%s Trigger Crash\n", if (selected == .crash) ">" else " ");
+    _ = c.printf("%s Exit\n", if (selected == .exit) ">" else " ");
+    _ = c.printf("\n  DPad up/down to navigate, A to select\n");
+}
+
 fn entry() !void {
-    //platform.crash_scenarios.deep_chain();
+    const items = [_]MenuItem{ .benchmark, .crash, .exit };
+    var index: usize = 0;
+
+    drawMenu(items[index]);
 
     while (c.SYS_MainLoop()) {
         _ = wpad.WPAD_ScanPads();
-        if ((wpad.WPAD_ButtonsDown(0) & wpad.WPAD_BUTTON_B) > 0) {
-            try bench.main();
-        }
-        else if ((wpad.WPAD_ButtonsDown(0) & wpad.WPAD_BUTTON_HOME) > 0) {
+        const pressed = wpad.WPAD_ButtonsDown(0);
+
+        if ((pressed & wpad.WPAD_BUTTON_DOWN) > 0) {
+            if (index + 1 < items.len) index += 1;
+            drawMenu(items[index]);
+        } else if ((pressed & wpad.WPAD_BUTTON_UP) > 0) {
+            if (index > 0) index -= 1;
+            drawMenu(items[index]);
+        } else if ((pressed & wpad.WPAD_BUTTON_A) > 0) {
+            switch (items[index]) {
+                .benchmark => try bench.main(),
+                .crash => platform.crash_scenarios.deep_chain(),
+                .exit => c.exit(0),
+            }
+            drawMenu(items[index]);
+        } else if ((pressed & wpad.WPAD_BUTTON_HOME) > 0) {
             c.exit(0);
         }
     }
