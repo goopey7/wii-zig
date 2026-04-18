@@ -164,6 +164,23 @@ pub fn sendPanic(panic_msg: []const u8, error_trace: ?*std.builtin.StackTrace) n
     unreachable;
 }
 
+// Static storage for the crash buffer so the handler doesn't need stack space
+const handler_state = struct {
+    var buf: [@sizeOf(u32) + @sizeOf(CrashDump) + max_stack]u8 = undefined;
+    var send_len: usize = 0;
+};
+
+noinline fn sendCrashFromNormalContext() noreturn {
+    if (handler_state.send_len > 0) {
+        _ = c.send(crash_socket, &handler_state.buf, handler_state.send_len, 0);
+        // wait to give the TCP stack time to flush before closing
+        var i: u32 = 0;
+        while (i < 1000000) : (i += 1) {}
+        _ = c.net_close(crash_socket);
+    }
+    c.exit(0);
+}
+
 pub fn handler(exid: c_uint, ctx_ptr: [*c]c.PPCContext) callconv(.c) void {
     const exid_enum: Exid = @enumFromInt(exid);
     const log = std.log.scoped(.CrashHandler);
@@ -190,62 +207,64 @@ pub fn handler(exid: c_uint, ctx_ptr: [*c]c.PPCContext) callconv(.c) void {
     const stack_ptr: [*]const u8 = @ptrFromInt(ctx.gpr[1]);
 
     if (crash_socket >= 0) {
-        var buf: [@sizeOf(u32) + @sizeOf(CrashDump) + max_stack]u8 = std.mem.zeroes([@sizeOf(u32) + @sizeOf(CrashDump) + max_stack]u8);
-        @memcpy(buf[0..@sizeOf(u32)], std.mem.asBytes(&magic_header));
+        @memset(&handler_state.buf, 0);
+        @memcpy(handler_state.buf[0..@sizeOf(u32)], std.mem.asBytes(&magic_header));
 
         var buf_offset: u32 = @sizeOf(u32);
         const exid_val: u32 = @intFromEnum(exid_enum);
-        @memcpy(buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&exid_val));
+        @memcpy(handler_state.buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&exid_val));
         buf_offset += @sizeOf(u32);
 
-        @memcpy(buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&ctx.pc));
+        @memcpy(handler_state.buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&ctx.pc));
         buf_offset += @sizeOf(u32);
 
-        @memcpy(buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&ctx.lr));
+        @memcpy(handler_state.buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&ctx.lr));
         buf_offset += @sizeOf(u32);
 
-        @memcpy(buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&ctx.ctr));
+        @memcpy(handler_state.buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&ctx.ctr));
         buf_offset += @sizeOf(u32);
 
-        @memcpy(buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&ctx.cr));
+        @memcpy(handler_state.buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&ctx.cr));
         buf_offset += @sizeOf(u32);
 
-        @memcpy(buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&ctx.xer));
+        @memcpy(handler_state.buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&ctx.xer));
         buf_offset += @sizeOf(u32);
 
-        @memcpy(buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&ctx.msr));
+        @memcpy(handler_state.buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&ctx.msr));
         buf_offset += @sizeOf(u32);
 
-        @memcpy(buf[buf_offset .. buf_offset + @sizeOf([32]u32)], std.mem.asBytes(&ctx.gpr));
+        @memcpy(handler_state.buf[buf_offset .. buf_offset + @sizeOf([32]u32)], std.mem.asBytes(&ctx.gpr));
         buf_offset += @sizeOf([32]u32);
 
-        @memcpy(buf[buf_offset .. buf_offset + @sizeOf([32]u64)], std.mem.asBytes(&ctx.fpr));
+        @memcpy(handler_state.buf[buf_offset .. buf_offset + @sizeOf([32]u64)], std.mem.asBytes(&ctx.fpr));
         buf_offset += @sizeOf([32]u64);
 
-        @memcpy(buf[buf_offset .. buf_offset + @sizeOf(u64)], std.mem.asBytes(&ctx.fpscr));
+        @memcpy(handler_state.buf[buf_offset .. buf_offset + @sizeOf(u64)], std.mem.asBytes(&ctx.fpscr));
         buf_offset += @sizeOf(u64);
 
-        @memcpy(buf[buf_offset .. buf_offset + @sizeOf([8]u32)], std.mem.asBytes(&ctx.gqr));
+        @memcpy(handler_state.buf[buf_offset .. buf_offset + @sizeOf([8]u32)], std.mem.asBytes(&ctx.gqr));
         buf_offset += @sizeOf([8]u32);
 
-        @memcpy(buf[buf_offset .. buf_offset + @sizeOf([32]u64)], std.mem.asBytes(&ctx.ps));
+        @memcpy(handler_state.buf[buf_offset .. buf_offset + @sizeOf([32]u64)], std.mem.asBytes(&ctx.ps));
         buf_offset += @sizeOf([32]u64);
 
-        @memcpy(buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&to_copy));
+        @memcpy(handler_state.buf[buf_offset .. buf_offset + @sizeOf(u32)], std.mem.asBytes(&to_copy));
         buf_offset += @sizeOf(u32);
 
-        @memcpy(buf[buf_offset .. buf_offset + to_copy], stack_ptr[0..to_copy]);
+        @memcpy(handler_state.buf[buf_offset .. buf_offset + to_copy], stack_ptr[0..to_copy]);
 
-        _ = c.send(crash_socket, &buf, @sizeOf(u32) + @sizeOf(CrashDump) + to_copy, 0);
-        {
-            var i: u32 = 0;
-            while (i < 100000) : (i += 1) {}
-        }
-        _ = c.net_close(crash_socket);
+        handler_state.send_len = @sizeOf(u32) + @sizeOf(CrashDump) + to_copy;
     } else {
         log.info("Invalid socket, not sending", .{});
+        handler_state.send_len = 0;
     }
 
-    c.SYS_ResetSystem(c.SYS_RETURNTOMENU, 0, 0);
+    // use rfi (return from interrupt) to return to a normal context
+    // and immediately jump to sendCrashFromNormalContext to send the crash data
+    asm volatile ("mtsrr0 %[addr]\nmtsrr1 %[msr]\nrfi\n"
+        :
+        : [addr] "r" (@intFromPtr(&sendCrashFromNormalContext)),
+          [msr] "r" (ctx.msr),
+    );
     unreachable;
 }
