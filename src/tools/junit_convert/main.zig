@@ -74,6 +74,10 @@ pub fn main() !void {
     const out_file = try std.fs.cwd().createFile(output_path, .{});
     defer out_file.close();
     try out_file.writeAll(output);
+
+    if (failed_count > 0) {
+        return error.TestsFailed;
+    }
 }
 
 fn parseLine(line: []const u8, allocator: std.mem.Allocator) !?TestResult {

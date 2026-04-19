@@ -26,5 +26,5 @@ export fn main() c_int {
     std.log.info("Failed: {}", .{failed});
     std.log.info("Total:  {}", .{passed + failed});
 
-    return 0;
+    return failed;
 }
