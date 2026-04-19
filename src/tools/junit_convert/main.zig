@@ -94,7 +94,7 @@ fn parseLine(line: []const u8, allocator: std.mem.Allocator) !?TestResult {
     if (!is_passed) {
         if (std.mem.indexOf(u8, line, " failed with: ")) |err_idx| {
             const err_start = err_idx + 14;
-            err_msg = try allocator.dupe(u8, line[err_start..suffix_idx.?]);
+            err_msg = try allocator.dupe(u8, line[err_start..]);
         }
     }
 
