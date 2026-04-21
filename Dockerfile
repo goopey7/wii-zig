@@ -32,7 +32,7 @@ RUN cmake .. \
 
 RUN apt-get update && apt-get install -y strace
 
-COPY dolphin-config/ /root/.config/dolphin-emu/
+COPY ~/.config/dolphin-emu/ /root/.config/dolphin-emu/
 
 RUN apt-get update && apt-get install -y curl xz-utils && \
     curl -L https://ziglang.org/download/0.15.2/zig-x86_64-linux-0.15.2.tar.xz | \
