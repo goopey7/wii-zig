@@ -1,4 +1,4 @@
-Windows is supported through Arch Linux on WSL.
+Windows is supported through Arch Linux on WSL, but you may have trouble running Tracy.
 [Click here for the Installation Guide.](https://wiki.archlinux.org/title/Install_Arch_Linux_on_WSL)
 Once installed, follow the same steps below.
 
@@ -36,7 +36,7 @@ OSREPORT = True
 The following packages are required to build the Tracy profiler server:
 
 ```sh
-sudo pacman -S cmake gcc freetype2 libxkbcommon
+sudo pacman -S cmake gcc libxinerama
 ```
 
 **Rust** is required to build the debug stacktrace tool:
