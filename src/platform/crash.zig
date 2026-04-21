@@ -2,10 +2,11 @@ const http = @import("http.zig");
 const c = @import("platform.zig").c;
 const dolphin = @import("dolphin.zig");
 const std = @import("std");
+const platform = @import("root.zig");
 
-pub const CRASH_DUMP_HOST = "192.168.0.107";
+pub const CRASH_DUMP_HOST = platform.DEV_MACHINE_IP;
 pub const CRASH_DUMP_PORT: u16 = 9000;
-pub const CRASH_DUMP_HOST_DOLPHIN = "127.0.0.1";
+pub const CRASH_DUMP_HOST_DOLPHIN = platform.DEV_MACHINE_IP_DOLPHIN;
 pub const CRASH_DUMP_PORT_DOLPHIN: u16 = 9000;
 
 const max_stack: u32 = 4 * 1024;

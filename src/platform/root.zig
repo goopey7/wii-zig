@@ -5,3 +5,5 @@ pub const http = @import("http.zig");
 pub const crash = @import("crash.zig");
 pub const dolphin = @import("dolphin.zig");
 pub const crash_scenarios = @import("crash_scenarios.zig");
+pub const DEV_MACHINE_IP = "192.168.0.107";
+pub const DEV_MACHINE_IP_DOLPHIN = "127.0.0.1";

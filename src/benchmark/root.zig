@@ -4,13 +4,14 @@ const BenchmarkConfig = @import("config.zig").BenchmarkConfig;
 const allocator = @import("common").allocator;
 const tracy = @import("common").tracy;
 const ResultsReporter = @import("reporter.zig").ResultsReporter;
-const http = @import("platform").http;
-const dolphin = @import("platform").dolphin;
-const c = @import("platform").c;
+const platform = @import("platform");
+const http = platform.http;
+const dolphin = platform.dolphin;
+const c = platform.c;
 
-pub const CSV_HOST_DOLPHIN = "127.0.0.1";
+pub const CSV_HOST_DOLPHIN = platform.DEV_MACHINE_IP_DOLPHIN;
 pub const CSV_PORT_DOLPHIN: u16 = 3000;
-pub const CSV_HOST = "192.168.0.107";
+pub const CSV_HOST = platform.DEV_MACHINE_IP;
 pub const CSV_PORT: u16 = 3000;
 
 pub fn main() !void {
