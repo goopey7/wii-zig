@@ -10,13 +10,13 @@ Once installed, follow the same steps below.
 
 As of writing this 0.15.2 is the latest release
 ```sh
-sudo pacman -S zig
+pacman -S zig
 ```
 
 **Dolphin Emulator** is required for `zig build run` and `zig build test`.
 
 ```sh
-sudo pacman -S dolphin-emu
+pacman -S dolphin-emu
 ```
 
 MMU must be enabled in Dolphin otherwise memory exception crashes won't be caught by the crash
@@ -36,13 +36,13 @@ OSREPORT = True
 The following packages are required to build the Tracy profiler server:
 
 ```sh
-sudo pacman -S cmake gcc libxinerama
+pacman -S base-devel cmake gcc libxinerama git
 ```
 
 **Rust** is required to build the debug stacktrace tool:
 
 ```sh
-sudo pacman -S rustup
+pacman -S rustup
 rustup default stable
 ```
 
