@@ -41,9 +41,9 @@ const MenuItem = enum { benchmark, crash, exit };
 fn drawMenu(selected: MenuItem) void {
     _ = c.printf("\x1b[2J\x1b[H");
     _ = c.printf("\n  === Main Menu ===\n\n");
-    _ = c.printf("%s Run Benchmark\n", if (selected == .benchmark) ">" else " ");
-    _ = c.printf("%s Trigger Crash\n", if (selected == .crash) ">" else " ");
-    _ = c.printf("%s Exit\n", if (selected == .exit) ">" else " ");
+    _ = c.printf("%s %sRun Benchmark\x1b[0m\n", @as([*c]const u8, if (selected == .benchmark) ">" else " "), @as([*c]const u8, if (selected == .benchmark) "\x1b[33m" else ""));
+    _ = c.printf("%s %sTrigger Crash\x1b[0m\n", @as([*c]const u8, if (selected == .crash) ">" else " "), @as([*c]const u8, if (selected == .crash) "\x1b[33m" else ""));
+    _ = c.printf("%s %sExit\x1b[0m\n", @as([*c]const u8, if (selected == .exit) ">" else " "), @as([*c]const u8, if (selected == .exit) "\x1b[33m" else ""));
     _ = c.printf("\n  DPad up/down to navigate, A to select\n");
 }
 
