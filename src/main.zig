@@ -77,10 +77,14 @@ fn entry() !void {
 }
 
 export fn main() c_int {
+    // wanna avoid as many abstractions as possible. Just wanna grab the stack ptr immediately.
+    // hence inline asm
     crash.stack_top = asm volatile ("mr %[out], 1"
         : [out] "=r" (-> u32),
     );
-    crash.stack_top = (crash.stack_top + 0xFFF) & ~@as(u32, 0xFFF);
+    // align up to nearest 4k aligned addr (seems to work for the stack)
+    crash.stack_top = std.mem.alignForward(u32, crash.stack_top, 0x1000);
+
     init() catch |err| {
         @panic(@errorName(err));
     };

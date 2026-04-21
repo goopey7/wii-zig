@@ -1,5 +1,7 @@
 const std = @import("std");
 
+/// wraps an existing allocator, and triggers a panic when OOM
+/// panic is defined in main.zig. It sends a stacktrace over TCP
 pub const PanicAllocator = struct {
     inner: std.mem.Allocator,
     const Alignment = std.mem.Alignment;
