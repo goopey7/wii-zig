@@ -67,22 +67,6 @@ pub fn main() !void {
             libc.deinit();
             tracy.frameMarkFlush();
         }
-        {
-            var tlsf_sw = try allocator.TlsfAllocator.init(.MEM_1, null);
-            const z = tracy.zoneBegin("wu_tlsf_stress", @src());
-            _ = try workloads.StressWorkload.run(config, tlsf_sw.interface(), bench, 42);
-            tracy.zoneEnd(z);
-            tlsf_sw.deinit();
-            tracy.frameMarkFlush();
-        }
-        {
-            var libc_sw = allocator.LibcAllocator.init();
-            const z = tracy.zoneBegin("wu_libc_stress", @src());
-            _ = try workloads.StressWorkload.run(config, libc_sw.interface(), bench, 42);
-            tracy.zoneEnd(z);
-            libc_sw.deinit();
-            tracy.frameMarkFlush();
-        }
     }
     reporter.deinit();
     bench_alloc.reset();
@@ -182,27 +166,6 @@ pub fn main() !void {
             tracy.frameMarkFlush();
         }
 
-        std.log.info("tlsf/stress", .{});
-        {
-            var tlsf_s = try allocator.TlsfAllocator.init(.MEM_1, null);
-            const zone = tracy.zoneBegin("tlsf_stress", @src());
-            const tlsf_stress = try workloads.StressWorkload.run(config, tlsf_s.interface(), bench, seed);
-            tracy.zoneEnd(zone);
-            tlsf_s.deinit();
-            try reporter.addStressResult("tlsf_stress", seed, tlsf_stress);
-            tracy.frameMarkFlush();
-        }
-
-        std.log.info("libc/stress", .{});
-        {
-            var libc_s = allocator.LibcAllocator.init();
-            const zone = tracy.zoneBegin("libc_stress", @src());
-            const libc_stress = try workloads.StressWorkload.run(config, libc_s.interface(), bench, seed);
-            tracy.zoneEnd(zone);
-            libc_s.deinit();
-            try reporter.addStressResult("libc_stress", seed, libc_stress);
-            tracy.frameMarkFlush();
-        }
     }
 
     std.log.info("Benchmark complete", .{});

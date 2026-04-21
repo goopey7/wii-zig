@@ -40,7 +40,6 @@ fn internalFragScore(stats: allocator.Stats) f64 {
 
 /// Simulates a game running at a fixed frame rate.
 /// Each frame allocates a variable number of small objects then frees them all.
-/// Fragmentation is sampled after each frame's allocs and before their frees.
 pub const FrameBasedWorkload = struct {
     pub fn run(config: BenchmarkConfig, alloc_interface: allocator.Interface, bench_alloc: std.mem.Allocator, seed: u64) !WorkloadResult {
         var prng = std.Random.DefaultPrng.init(seed);
@@ -102,8 +101,7 @@ pub const FrameBasedWorkload = struct {
 };
 
 /// Simulates a game with objects of varying lifetimes.
-/// Short-lived and long-lived objects interleave on the heap, generating realistic fragmentation.
-/// Fragmentation is sampled each frame after new allocations.
+/// Short lived and long lived objects interleave on the heap, generating realistic fragmentation.
 pub const MixedLifetimeWorkload = struct {
     const LiveObject = struct {
         ptr: []u8,
@@ -183,110 +181,6 @@ pub const MixedLifetimeWorkload = struct {
 
         for (live_objects.items) |obj| {
             std_alloc.free(obj.ptr);
-        }
-
-        result.final_allocator_stats = alloc_interface.getStats();
-        return result;
-    }
-};
-
-pub const StressFrameRecord = struct {
-    frame_idx: usize,
-    mean_alloc_time_ns: u64,
-    max_alloc_time_ns: u64,
-    mean_free_time_ns: u64,
-    fragmentation: f64,
-    internal_fragmentation: f64,
-    live_bytes: usize,
-    alloc_count: usize,
-    free_count: usize,
-    seed: u64,
-};
-
-pub const StressWorkloadResult = struct {
-    final_allocator_stats: allocator.Stats,
-    frames: std.ArrayList(StressFrameRecord),
-};
-
-/// Long-running workload with no per-frame heap reset.
-/// Each frame randomly frees a percentage of live objects, then
-/// allocates a fresh batch with sizes drawn from a wide range.
-pub const StressWorkload = struct {
-    pub fn run(config: BenchmarkConfig, alloc_interface: allocator.Interface, bench_alloc: std.mem.Allocator, seed: u64) !StressWorkloadResult {
-        var prng = std.Random.DefaultPrng.init(seed);
-        const rand = prng.random();
-
-        var result = StressWorkloadResult{
-            .final_allocator_stats = undefined,
-            .frames = try std.ArrayList(StressFrameRecord).initCapacity(bench_alloc, config.stress_frame_count),
-        };
-
-        var live_objects = try std.ArrayList([]u8).initCapacity(bench_alloc, 512);
-
-        var std_alloc = alloc_interface.stdInterface();
-
-        for (0..config.stress_frame_count) |frame_idx| {
-            var frame_alloc_total_ns: u64 = 0;
-            var frame_alloc_max_ns: u64 = 0;
-            var frame_alloc_count: usize = 0;
-            var frame_free_total_ns: u64 = 0;
-            var frame_free_count: usize = 0;
-
-            // Randomly free percentage of live objects.
-            var i: usize = 0;
-            while (i < live_objects.items.len) {
-                if (rand.uintLessThan(usize, 100) < config.stress_free_percent) {
-                    var free_timer = Timer.start();
-                    std_alloc.free(live_objects.items[i]);
-                    free_timer.stop();
-                    frame_free_total_ns += try free_timer.getTimeElapsed(.nanoseconds);
-                    frame_free_count += 1;
-                    _ = live_objects.swapRemove(i);
-                } else {
-                    i += 1;
-                }
-            }
-
-            // Allocate a fresh batch with wide-range sizes.
-            const target = rand.intRangeAtMost(usize, config.stress_allocs_per_frame_range.min, config.stress_allocs_per_frame_range.max);
-            for (0..target) |_| {
-                const size = rand.intRangeAtMost(usize, config.stress_alloc_size_range.min, config.stress_alloc_size_range.max);
-                var alloc_timer = Timer.start();
-                const alloc_result = std_alloc.alloc(u8, size);
-                alloc_timer.stop();
-                if (alloc_result) |ptr| {
-                    const elapsed = try alloc_timer.getTimeElapsed(.nanoseconds);
-                    frame_alloc_total_ns += elapsed;
-                    if (elapsed > frame_alloc_max_ns) frame_alloc_max_ns = elapsed;
-                    frame_alloc_count += 1;
-                    live_objects.append(bench_alloc, ptr) catch {
-                        std_alloc.free(ptr);
-                    };
-                } else |_| {}
-            }
-
-            const stats = alloc_interface.getStats();
-
-            try result.frames.append(bench_alloc, .{
-                .frame_idx = frame_idx,
-                .mean_alloc_time_ns = if (frame_alloc_count > 0) frame_alloc_total_ns / frame_alloc_count else 0,
-                .max_alloc_time_ns = frame_alloc_max_ns,
-                .mean_free_time_ns = if (frame_free_count > 0) frame_free_total_ns / frame_free_count else 0,
-                .fragmentation = fragScore(stats),
-                .internal_fragmentation = internalFragScore(stats),
-                .live_bytes = stats.current_usage,
-                .alloc_count = frame_alloc_count,
-                .free_count = frame_free_count,
-                .seed = seed,
-            });
-
-            tracy.plot("alloc.usage_bytes", @floatFromInt(stats.current_usage));
-            tracy.plot("alloc.ext_frag", fragScore(stats));
-            tracy.plot("alloc.int_frag", internalFragScore(stats));
-        }
-
-        for (live_objects.items) |obj| {
-            std_alloc.free(obj);
         }
 
         result.final_allocator_stats = alloc_interface.getStats();
