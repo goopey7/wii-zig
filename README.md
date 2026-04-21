@@ -33,6 +33,12 @@ To receive output logs in Dolphin, OSREPORT needs to be enabled. In `~/.config/d
 OSREPORT = True
 ```
 
+The following packages are required to build the Tracy profiler server:
+
+```sh
+sudo pacman -S cmake gcc freetype2 libxkbcommon
+```
+
 **Rust** is required to build the debug stacktrace tool:
 
 ```sh
@@ -81,3 +87,15 @@ Stacktraces will appear in your terminal when the Wii panics or crashes.
 > **Note:** The dev machine's IP address is hardcoded as `DEV_MACHINE_IP` in
 > `src/platform/root.zig`. Update it there before building since it is used for both
 > crash reports and sending CSV benchmark results.
+
+### Tracy profiler server gui
+
+In order to profile a build with Tracy enabled, you'll need to build the Tracy server gui.
+
+```sh
+cmake -B tracy/profiler/build tracy/profiler
+cmake --build tracy/profiler/build --parallel
+```
+
+The binary will be at `tracy/profiler/build/tracy-profiler`.
+Run it and connect while the application is running to capture live profiling data.
